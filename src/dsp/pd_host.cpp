@@ -363,6 +363,10 @@ int get_param(void* p, const char* key, char* buf, int buf_len) {
         buf[to_copy] = 0;
         return to_copy;
     }
+    if (std::strcmp(key, "patch_list") == 0) {
+        return organelle::list_patches_json(
+            "/data/UserData/schwung/organelle-patches", buf, buf_len);
+    }
     if (std::strcmp(key, "midi_out_queue") == 0) {
         // Drain MIDI-out ring into a compact base64-ish hex string:
         // "AABBCC,AABBCC,..." — 3 bytes per message, comma-separated.

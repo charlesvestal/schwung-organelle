@@ -1,32 +1,259 @@
-// Organelle slot UI — patch browser + Pd screen passthrough.
-// Skeleton; implementation tracked in docs/plans/2026-05-12-organelle-port-plan.md.
+/*
+ * Organelle slot UI (ui_chain.js).
+ *
+ * Two states:
+ *   - 'browser': scan /data/UserData/schwung/organelle-patches/ and let
+ *                the user pick one with the jog wheel.
+ *   - 'running': forward the Pd patch's [s oled] draw commands to the
+ *                Move display, and route knobs/jog/touches into Pd.
+ */
 
-import {
-    drawMenuHeader,
-    drawMenuList,
-    menuLayoutDefaults,
-} from '../../shared/menu_layout.mjs';
+import { shouldFilterMessage } from '/data/UserData/schwung/shared/input_filter.mjs';
 
-let currentPatchPath = '';
-let patchList = [];
+const SCREEN_W = 128;
+const SCREEN_H = 64;
+
+/* ----- state ----- */
+let state = 'browser';                // 'browser' | 'running'
+let patches = [];                     // [{name, path}]
 let selectedIndex = 0;
+let scrollOffset = 0;
+let needsBrowserRedraw = true;
+let midiOutDrainCounter = 0;
+
+/* ----- helpers ----- */
+
+function fetchPatchList() {
+    const json = host_module_get_param('patch_list');
+    try {
+        const list = JSON.parse(json || '[]');
+        if (Array.isArray(list)) return list;
+    } catch (_e) {}
+    return [];
+}
+
+function fetchInitialPatchPath() {
+    const p = host_module_get_param('patch_path');
+    return p || '';
+}
+
+function drawBrowser() {
+    clear_screen();
+
+    // Header
+    fill_rect(0, 0, SCREEN_W, 11, 1);
+    print(2, 2, 'Organelle', 0);
+
+    if (!patches.length) {
+        print(8, 28, 'No patches found.', 1);
+        print(2, 44, '/organelle-patches/', 1);
+        host_flush_display();
+        needsBrowserRedraw = false;
+        return;
+    }
+
+    const listTop = 13;
+    const listBottom = SCREEN_H - 1;
+    const lineH = 10;
+    const visibleRows = Math.floor((listBottom - listTop) / lineH);
+
+    if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
+    if (selectedIndex >= scrollOffset + visibleRows) scrollOffset = selectedIndex - visibleRows + 1;
+
+    for (let i = 0; i < visibleRows; i++) {
+        const idx = scrollOffset + i;
+        if (idx >= patches.length) break;
+        const y = listTop + i * lineH;
+        const sel = idx === selectedIndex;
+        if (sel) fill_rect(0, y - 1, SCREEN_W, lineH, 1);
+        print(2, y, patches[idx].name, sel ? 0 : 1);
+    }
+
+    host_flush_display();
+    needsBrowserRedraw = false;
+}
+
+function enterRunning(patch) {
+    host_module_set_param('patch_path', patch.path);
+    state = 'running';
+    // Don't draw anything yet — Pd patch will paint via screen_ops.
+    clear_screen();
+    host_flush_display();
+}
+
+function exitToBrowser() {
+    host_module_set_param('patch_path', '');
+    state = 'browser';
+    patches = fetchPatchList();
+    if (selectedIndex >= patches.length) selectedIndex = Math.max(0, patches.length - 1);
+    needsBrowserRedraw = true;
+    drawBrowser();
+}
+
+/* ----- screen op execution (running state) ----- */
+
+function executeScreenOps(ops) {
+    let didFlip = false;
+    for (const o of ops) {
+        switch (o.op) {
+            case 'clear':
+                clear_screen();
+                break;
+            case 'fill':
+                fill_rect(o.x | 0, o.y | 0, o.w | 0, o.h | 0, o.c ? 1 : 0);
+                break;
+            case 'line':
+                draw_line(o.x1 | 0, o.y1 | 0, o.x2 | 0, o.y2 | 0, o.c ? 1 : 0);
+                break;
+            case 'box': {
+                // Outlined rect: 4 single-pixel lines.
+                const x = o.x | 0, y = o.y | 0, w = o.w | 0, h = o.h | 0, c = o.c ? 1 : 0;
+                draw_line(x, y, x + w - 1, y, c);
+                draw_line(x, y + h - 1, x + w - 1, y + h - 1, c);
+                draw_line(x, y, x, y + h - 1, c);
+                draw_line(x + w - 1, y, x + w - 1, y + h - 1, c);
+                break;
+            }
+            case 'invert':
+                // Approximation: fill white. Real XOR invert isn't exposed by
+                // Schwung's display API; most Organelle patches use invert
+                // for selection highlighting, which this still reads correctly
+                // if the patch draws text in color 0 over the highlight.
+                fill_rect(o.x | 0, o.y | 0, o.w | 0, o.h | 0, 1);
+                break;
+            case 'pixel':
+                set_pixel(o.x | 0, o.y | 0, o.c ? 1 : 0);
+                break;
+            case 'print':
+                print(o.x | 0, o.y | 0, String(o.text || ''), o.c ? 1 : 0);
+                break;
+            case 'flip':
+                didFlip = true;
+                break;
+        }
+    }
+    if (didFlip) host_flush_display();
+}
+
+/* ----- MIDI-out drain (running state) ----- */
+// Pd's [noteout]/[ctlout] hooks fill a ring in the DSP plugin; drain it as
+// hex triplets via get_param("midi_out_queue") and forward via
+// host_module_send_midi (or external as appropriate).
+
+function drainMidiOut() {
+    const hex = host_module_get_param('midi_out_queue');
+    if (!hex || !hex.length) return;
+    for (const part of hex.split(',')) {
+        if (part.length < 6) continue;
+        const msg = new Uint8Array(3);
+        msg[0] = parseInt(part.substr(0, 2), 16);
+        msg[1] = parseInt(part.substr(2, 2), 16);
+        msg[2] = parseInt(part.substr(4, 2), 16);
+        // Source 0 = internal (Move's MIDI out). Modules emitting to external
+        // USB MIDI would use source 2 — leave that for later.
+        host_module_send_midi(msg, 0);
+    }
+}
+
+/* ----- lifecycle ----- */
 
 function init() {
-    clear();
-    print(20, 28, 'Organelle', 16);
-    flip();
+    patches = fetchPatchList();
+    const cur = fetchInitialPatchPath();
+    if (cur) {
+        state = 'running';
+        clear_screen();
+        host_flush_display();
+    } else {
+        state = 'browser';
+        needsBrowserRedraw = true;
+        drawBrowser();
+    }
 }
 
 function tick() {
-    // TODO (Task 8+): refresh patch list; render State A or State B.
+    if (state === 'browser') {
+        if (needsBrowserRedraw) drawBrowser();
+        return;
+    }
+    // Running state.
+    const json = host_module_get_param('screen_ops');
+    if (json && json.length > 2) {  // ignore empty "[]"
+        let ops;
+        try { ops = JSON.parse(json); } catch (_e) { ops = null; }
+        if (Array.isArray(ops) && ops.length) executeScreenOps(ops);
+    }
+    // Drain MIDI out every 2 ticks (~22 Hz, plenty for note timing).
+    if ((++midiOutDrainCounter & 1) === 0) drainMidiOut();
 }
 
-function onMidiMessageInternal(_data) {
-    // TODO (Task 10+): jog, knob touches, knob CCs.
+/* ----- input ----- */
+
+function onMidiMessageInternal(data) {
+    if (shouldFilterMessage(data)) return;
+    if (!data || data.length < 2) return;
+    const status = data[0];
+    const d1 = data[1];
+    const d2 = data.length > 2 ? data[2] : 0;
+    const hi = status & 0xF0;
+
+    // --- Knob capacitive touches: notes 0-9 (knob 1 = note 1, ..., knob 8 = note 8)
+    if ((hi === 0x90 || hi === 0x80) && d1 >= 1 && d1 <= 8) {
+        const on = hi === 0x90 && d2 > 0;
+        if (d1 === 7) { host_module_set_param('aux', on ? '1' : '0'); return; }
+        if (d1 === 8) { host_module_set_param('fs',  on ? '1' : '0'); return; }
+        return;  // other knob touches ignored
+    }
+
+    // --- CC traffic
+    if (hi !== 0xB0) {
+        // Pad/keyboard notes (>= 10) are NOT re-dispatched here — they
+        // arrive in the DSP plugin's on_midi via the chain mixer route.
+        return;
+    }
+
+    // Knobs 1-4 (CC 71-74)
+    if (d1 >= 71 && d1 <= 74) {
+        const knob = d1 - 71 + 1;
+        host_module_set_param(`knob${knob}`, String(d2));
+        return;
+    }
+
+    // Jog turn (CC 14, signed delta encoded as 0..127)
+    if (d1 === 14) {
+        const delta = d2 < 64 ? d2 : d2 - 128;
+        if (!delta) return;
+        if (state === 'browser') {
+            if (delta > 0 && selectedIndex < patches.length - 1) selectedIndex++;
+            if (delta < 0 && selectedIndex > 0) selectedIndex--;
+            needsBrowserRedraw = true;
+        } else {
+            host_module_set_param('encoderInput', String(delta));
+        }
+        return;
+    }
+
+    // Jog click (CC 3)
+    if (d1 === 3) {
+        if (state === 'browser') {
+            if (d2 > 0 && patches.length) enterRunning(patches[selectedIndex]);
+        } else {
+            host_module_set_param('encoderButton', d2 > 0 ? '1' : '0');
+        }
+        return;
+    }
+
+    // Back button (CC 51): in running state, return to browser.
+    if (d1 === 51 && d2 > 0 && state === 'running') {
+        exitToBrowser();
+        return;
+    }
 }
 
 function onMidiMessageExternal(_data) {
-    // TODO (Task 10+): full MIDI bridge in State B.
+    // External USB MIDI arrives in the chain mixer and is delivered to the
+    // DSP plugin's on_midi automatically per the slot's "full bridge"
+    // routing. No JS-side action needed.
 }
 
 globalThis.chain_ui = {
