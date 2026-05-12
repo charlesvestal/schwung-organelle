@@ -439,50 +439,35 @@ void render_block(void* p, int16_t* out_lr, int frames) {
         }
     }
 
-    // ----- Audio in (deinterleaved per-tick: L block, R block, L block, R block) -----
-    const int BLK = 64;
-    const int ticks = frames / BLK;
+    // ----- Audio in (libpd takes interleaved stereo, same layout as Move's mailbox) -----
+    const int ticks = frames / 64;
     const float inv32k = 1.0f / 32768.0f;
+    const int total = frames * 2;
 
     if (inst->audio_in_enable && g_host && g_host->mapped_memory) {
         const int16_t* in_lr = reinterpret_cast<const int16_t*>(
             g_host->mapped_memory + g_host->audio_in_offset);
-        for (int t = 0; t < ticks; ++t) {
-            float*       l_dst = inst->in_buf + t * BLK * 2;
-            float*       r_dst = l_dst + BLK;
-            const int16_t* in  = in_lr + t * BLK * 2;
-            for (int f = 0; f < BLK; ++f) {
-                l_dst[f] = static_cast<float>(in[f * 2 + 0]) * inv32k;
-                r_dst[f] = static_cast<float>(in[f * 2 + 1]) * inv32k;
-            }
+        for (int i = 0; i < total; ++i) {
+            inst->in_buf[i] = static_cast<float>(in_lr[i]) * inv32k;
         }
     } else {
-        std::memset(inst->in_buf, 0, sizeof(float) * frames * 2);
+        std::memset(inst->in_buf, 0, sizeof(float) * total);
     }
 
     // ----- Render -----
     if (inst->current_patch) {
         libpd_process_float(ticks, inst->in_buf, inst->out_buf);
     } else {
-        std::memset(inst->out_buf, 0, sizeof(float) * frames * 2);
+        std::memset(inst->out_buf, 0, sizeof(float) * total);
     }
 
-    // ----- Output: deinterleaved float → interleaved int16, apply gain -----
+    // ----- Output (interleaved float → interleaved int16, gain) -----
     const float g = inst->gain;
-    for (int t = 0; t < ticks; ++t) {
-        const float* l_src = inst->out_buf + t * BLK * 2;
-        const float* r_src = l_src + BLK;
-        int16_t*     out   = out_lr + t * BLK * 2;
-        for (int f = 0; f < BLK; ++f) {
-            float l = l_src[f] * g;
-            float r = r_src[f] * g;
-            if (l >  1.0f) l =  1.0f;
-            if (l < -1.0f) l = -1.0f;
-            if (r >  1.0f) r =  1.0f;
-            if (r < -1.0f) r = -1.0f;
-            out[f * 2 + 0] = static_cast<int16_t>(l * 32767.0f);
-            out[f * 2 + 1] = static_cast<int16_t>(r * 32767.0f);
-        }
+    for (int i = 0; i < total; ++i) {
+        float s = inst->out_buf[i] * g;
+        if (s >  1.0f) s =  1.0f;
+        if (s < -1.0f) s = -1.0f;
+        out_lr[i] = static_cast<int16_t>(s * 32767.0f);
     }
 }
 
