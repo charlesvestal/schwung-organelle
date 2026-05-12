@@ -132,7 +132,20 @@ void on_pd_pitchbend(int ch, int val) {
     inst->midi_out_head.store(next, std::memory_order_release);
 }
 
+void on_pd_print(const char* s) {
+    if (!s || !*s) return;
+    if (g_host && g_host->log) {
+        char line[512];
+        std::snprintf(line, sizeof(line), "[organelle/pd] %s", s);
+        // libpd's print is sometimes line-buffered, sometimes per-piece; trim newlines.
+        const int n = static_cast<int>(std::strlen(line));
+        if (n && (line[n - 1] == '\n' || line[n - 1] == '\r')) line[n - 1] = 0;
+        g_host->log(line);
+    }
+}
+
 void install_hooks_once() {
+    libpd_set_printhook(on_pd_print);
     libpd_set_messagehook(on_pd_message);
     libpd_set_noteonhook(on_pd_noteon);
     libpd_set_controlchangehook(on_pd_controlchange);
@@ -171,6 +184,9 @@ void* create_instance(const char* /*module_dir*/, const char* /*json_defaults*/)
     libpd_add_float(1.0f);
     libpd_finish_message("pd", "dsp");
 
+    if (g_host && g_host->log) {
+        g_host->log("[organelle] create_instance: libpd ready, dsp on");
+    }
     return inst;
 }
 
@@ -244,7 +260,18 @@ void set_param(void* p, const char* key, const char* val) {
         }
         if (val && *val) {
             inst->current_patch = organelle::load_patch(val);
-            if (inst->current_patch) inst->current_patch_path = val;
+            if (inst->current_patch) {
+                inst->current_patch_path = val;
+                if (g_host && g_host->log) {
+                    char line[512];
+                    std::snprintf(line, sizeof(line), "[organelle] patch loaded: %s", val);
+                    g_host->log(line);
+                }
+            } else if (g_host && g_host->log) {
+                char line[512];
+                std::snprintf(line, sizeof(line), "[organelle] patch LOAD FAILED: %s", val);
+                g_host->log(line);
+            }
         }
         return;
     }
@@ -412,13 +439,22 @@ void render_block(void* p, int16_t* out_lr, int frames) {
         }
     }
 
-    // ----- Audio in -----
+    // ----- Audio in (deinterleaved per-tick: L block, R block, L block, R block) -----
+    const int BLK = 64;
+    const int ticks = frames / BLK;
+    const float inv32k = 1.0f / 32768.0f;
+
     if (inst->audio_in_enable && g_host && g_host->mapped_memory) {
         const int16_t* in_lr = reinterpret_cast<const int16_t*>(
             g_host->mapped_memory + g_host->audio_in_offset);
-        const float inv32k = 1.0f / 32768.0f;
-        for (int i = 0; i < frames * 2; ++i) {
-            inst->in_buf[i] = static_cast<float>(in_lr[i]) * inv32k;
+        for (int t = 0; t < ticks; ++t) {
+            float*       l_dst = inst->in_buf + t * BLK * 2;
+            float*       r_dst = l_dst + BLK;
+            const int16_t* in  = in_lr + t * BLK * 2;
+            for (int f = 0; f < BLK; ++f) {
+                l_dst[f] = static_cast<float>(in[f * 2 + 0]) * inv32k;
+                r_dst[f] = static_cast<float>(in[f * 2 + 1]) * inv32k;
+            }
         }
     } else {
         std::memset(inst->in_buf, 0, sizeof(float) * frames * 2);
@@ -426,19 +462,27 @@ void render_block(void* p, int16_t* out_lr, int frames) {
 
     // ----- Render -----
     if (inst->current_patch) {
-        const int ticks = frames / 64;
         libpd_process_float(ticks, inst->in_buf, inst->out_buf);
     } else {
         std::memset(inst->out_buf, 0, sizeof(float) * frames * 2);
     }
 
-    // ----- Output: float → int16, apply gain -----
+    // ----- Output: deinterleaved float → interleaved int16, apply gain -----
     const float g = inst->gain;
-    for (int i = 0; i < frames * 2; ++i) {
-        float s = inst->out_buf[i] * g;
-        if (s >  1.0f) s =  1.0f;
-        if (s < -1.0f) s = -1.0f;
-        out_lr[i] = static_cast<int16_t>(s * 32767.0f);
+    for (int t = 0; t < ticks; ++t) {
+        const float* l_src = inst->out_buf + t * BLK * 2;
+        const float* r_src = l_src + BLK;
+        int16_t*     out   = out_lr + t * BLK * 2;
+        for (int f = 0; f < BLK; ++f) {
+            float l = l_src[f] * g;
+            float r = r_src[f] * g;
+            if (l >  1.0f) l =  1.0f;
+            if (l < -1.0f) l = -1.0f;
+            if (r >  1.0f) r =  1.0f;
+            if (r < -1.0f) r = -1.0f;
+            out[f * 2 + 0] = static_cast<int16_t>(l * 32767.0f);
+            out[f * 2 + 1] = static_cast<int16_t>(r * 32767.0f);
+        }
     }
 }
 
