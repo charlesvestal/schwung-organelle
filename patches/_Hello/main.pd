@@ -1,0 +1,16 @@
+#N canvas 0 0 600 400 10;
+#X obj 30 30 loadbang;
+#X msg 30 60 gFillArea 0 0 128 64 0 \, gPrintln 28 24 16 1 Hello \, gFlip;
+#X obj 30 90 s oled;
+#X obj 250 30 notein;
+#X obj 250 60 mtof;
+#X obj 250 90 osc~;
+#X obj 250 120 *~ 0.2;
+#X obj 250 150 dac~;
+#X connect 0 0 1 0;
+#X connect 1 0 2 0;
+#X connect 3 0 4 0;
+#X connect 4 0 5 0;
+#X connect 5 0 6 0;
+#X connect 6 0 7 0;
+#X connect 6 0 7 1;
