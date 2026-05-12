@@ -53,7 +53,7 @@ fi
 echo "Building libpd..."
 LIBPD_BUILD="build/libpd"
 mkdir -p "$LIBPD_BUILD"
-if [ ! -f "$LIBPD_BUILD/libs/libpd.a" ]; then
+if [ ! -f "$LIBPD_BUILD/libpd-multi.a" ]; then
     (
         cd "$LIBPD_BUILD"
         cmake "../../$LIBPD_DIR" \
@@ -67,8 +67,7 @@ if [ ! -f "$LIBPD_BUILD/libs/libpd.a" ]; then
             -DPD_UTILS=OFF \
             -DPD_EXTRA=ON \
             -DPD_BUILD_C_EXAMPLES=OFF \
-            -DPD_BUILD_C_TESTS=OFF \
-            -DBUILD_SHARED_LIBS=OFF
+            -DPD_BUILD_C_TESTS=OFF
         make -j$(nproc)
     )
 fi
@@ -85,7 +84,7 @@ ${CROSS_PREFIX}g++ -O3 -shared -fPIC \
     -Isrc/dsp \
     -I$LIBPD_DIR/libpd_wrapper \
     -I$LIBPD_DIR/pure-data/src \
-    "$LIBPD_BUILD/libs/libpd.a" \
+    "$LIBPD_BUILD/libpd-multi.a" \
     -o build/dsp.so \
     -lm -lpthread
 
