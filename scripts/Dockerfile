@@ -1,0 +1,14 @@
+# Dockerfile for building Organelle module for Schwung (ARM64)
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    gcc-aarch64-linux-gnu \
+    g++-aarch64-linux-gnu \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV CROSS_PREFIX=aarch64-linux-gnu-
+
+WORKDIR /build
