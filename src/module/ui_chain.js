@@ -8,7 +8,7 @@
  *                Move display, and route knobs/jog/touches into Pd.
  */
 
-import { shouldFilterMessage } from '/data/UserData/schwung/shared/input_filter.mjs';
+import { shouldFilterMessage, decodeDelta } from '/data/UserData/schwung/shared/input_filter.mjs';
 
 const SCREEN_W = 128;
 const SCREEN_H = 64;
@@ -20,6 +20,12 @@ let selectedIndex = 0;
 let scrollOffset = 0;
 let needsBrowserRedraw = true;
 let midiOutDrainCounter = 0;
+
+// Accumulated 0-1023 value per physical knob (1-indexed; we use 1..4).
+// Move's knobs send relative deltas (1-63=CW, 64-127=CCW), not absolute,
+// so we have to integrate. 0-1023 matches Organelle's native [r knobN] range.
+const knobValues = [0, 512, 512, 512, 512];   // indexes 1..4 used; 0 unused
+const KNOB_STEP = 8;                          // 128 ticks → full range
 
 /* ----- helpers ----- */
 
@@ -196,19 +202,19 @@ function onMidiMessageInternal(data) {
     const d2 = data.length > 2 ? data[2] : 0;
     const hi = status & 0xF0;
 
-    // --- Knob capacitive touches: notes 0-9 (knob N → note N).
+    // --- Knob capacitive touches: notes 0-7 (knob N → note N-1).
     // shouldFilterMessage() drops these, so handle BEFORE the filter.
-    if ((hi === 0x90 || hi === 0x80) && d1 >= 1 && d1 <= 8) {
+    if ((hi === 0x90 || hi === 0x80) && d1 >= 0 && d1 <= 7) {
         const on = hi === 0x90 && d2 > 0;
-        // Knob 7 touch = Organelle Aux = open patch list (system menu).
+        // Knob 7 touch (note 6) = Organelle Aux = open patch list.
         // Patches don't see auxKey by default; matches Organelle's native UX
         // where Aux is the system key, not a patch button.
-        if (d1 === 7 && on) {
+        if (d1 === 6 && on) {
             if (state === 'running') exitToBrowser();
             return;
         }
-        // Knob 8 touch = foot switch → r fs to the patch.
-        if (d1 === 8) { host_module_set_param('fs', on ? '1' : '0'); return; }
+        // Knob 8 touch (note 7) = foot switch → r fs to the patch.
+        if (d1 === 7) { host_module_set_param('fs', on ? '1' : '0'); return; }
         return;  // other knob touches ignored
     }
 
@@ -222,10 +228,17 @@ function onMidiMessageInternal(data) {
         return;
     }
 
-    // Knobs 1-4 (CC 71-74)
+    // Knobs 1-4 (CC 71-74). Move sends RELATIVE deltas, not absolute — integrate.
     if (d1 >= 71 && d1 <= 74) {
         const knob = d1 - 71 + 1;
-        host_module_set_param(`knob${knob}`, String(d2));
+        const delta = decodeDelta(d2);
+        if (!delta) return;
+        let v = knobValues[knob] + delta * KNOB_STEP;
+        if (v < 0) v = 0;
+        if (v > 1023) v = 1023;
+        knobValues[knob] = v;
+        // Send raw 0-1023 to Pd; DSP plugin no longer rescales.
+        host_module_set_param(`knob${knob}`, String(v));
         return;
     }
 
