@@ -190,28 +190,30 @@ function tick() {
 /* ----- input ----- */
 
 function onMidiMessageInternal(data) {
-    if (shouldFilterMessage(data)) return;
     if (!data || data.length < 2) return;
     const status = data[0];
     const d1 = data[1];
     const d2 = data.length > 2 ? data[2] : 0;
     const hi = status & 0xF0;
 
-    // --- Knob capacitive touches: notes 0-9 (knob 1 = note 1, ..., knob 8 = note 8)
+    // --- Knob capacitive touches: notes 0-9 (knob N → note N).
+    // shouldFilterMessage() drops these, so handle BEFORE the filter.
     if ((hi === 0x90 || hi === 0x80) && d1 >= 1 && d1 <= 8) {
         const on = hi === 0x90 && d2 > 0;
         // Knob 7 touch = Organelle Aux = open patch list (system menu).
-        // Patches don't see auxKey by default; this matches Organelle's
-        // native UX where Aux is the system key, not a patch button.
+        // Patches don't see auxKey by default; matches Organelle's native UX
+        // where Aux is the system key, not a patch button.
         if (d1 === 7 && on) {
             if (state === 'running') exitToBrowser();
-            else /* browser */ { /* already there; no-op */ }
             return;
         }
         // Knob 8 touch = foot switch → r fs to the patch.
         if (d1 === 8) { host_module_set_param('fs', on ? '1' : '0'); return; }
         return;  // other knob touches ignored
     }
+
+    // Drop noise + capacitive touches we don't care about.
+    if (shouldFilterMessage(data)) return;
 
     // --- CC traffic
     if (hi !== 0xB0) {
