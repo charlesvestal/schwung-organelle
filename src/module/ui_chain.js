@@ -200,8 +200,16 @@ function onMidiMessageInternal(data) {
     // --- Knob capacitive touches: notes 0-9 (knob 1 = note 1, ..., knob 8 = note 8)
     if ((hi === 0x90 || hi === 0x80) && d1 >= 1 && d1 <= 8) {
         const on = hi === 0x90 && d2 > 0;
-        if (d1 === 7) { host_module_set_param('aux', on ? '1' : '0'); return; }
-        if (d1 === 8) { host_module_set_param('fs',  on ? '1' : '0'); return; }
+        // Knob 7 touch = Organelle Aux = open patch list (system menu).
+        // Patches don't see auxKey by default; this matches Organelle's
+        // native UX where Aux is the system key, not a patch button.
+        if (d1 === 7 && on) {
+            if (state === 'running') exitToBrowser();
+            else /* browser */ { /* already there; no-op */ }
+            return;
+        }
+        // Knob 8 touch = foot switch → r fs to the patch.
+        if (d1 === 8) { host_module_set_param('fs', on ? '1' : '0'); return; }
         return;  // other knob touches ignored
     }
 

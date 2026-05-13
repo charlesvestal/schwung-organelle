@@ -366,7 +366,6 @@ int get_param(void* p, const char* key, char* buf, int buf_len) {
             "{\"key\":\"octave_transpose\",\"name\":\"Octave\",\"type\":\"int\",\"min\":-4,\"max\":4,\"default\":0},"
             "{\"key\":\"audio_in_enable\",\"name\":\"Line In to Pd\",\"type\":\"enum\",\"options\":[\"Off\",\"On\"],\"default\":\"On\"},"
             "{\"key\":\"gain\",\"name\":\"Output Gain\",\"type\":\"float\",\"min\":0,\"max\":1.5,\"step\":0.01,\"default\":1.0},"
-            "{\"key\":\"aux_source\",\"name\":\"Aux Button\",\"type\":\"enum\",\"options\":[\"Knob7 Touch\",\"Off\"],\"default\":\"Knob7 Touch\"},"
             "{\"key\":\"fs_source\",\"name\":\"Foot Switch\",\"type\":\"enum\",\"options\":[\"Knob8 Touch\",\"Off\"],\"default\":\"Knob8 Touch\"}"
             "]";
         const int n = static_cast<int>(std::strlen(params_json));
