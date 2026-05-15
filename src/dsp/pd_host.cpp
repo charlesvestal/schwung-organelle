@@ -62,17 +62,13 @@ struct Instance {
     float          last_tempo_sent = -1.0f;
 };
 
-// Map t_pdinstance* → Instance* so libpd hooks (which only know the
-// current instance pointer via libpd_this_instance()) can find their
-// owning Instance and route messages/MIDI back.
-std::mutex g_inst_map_mtx;
-std::unordered_map<t_pdinstance*, Instance*> g_inst_map;
-
-Instance* current_instance_from_libpd() {
-    t_pdinstance* pd = libpd_this_instance();
-    std::lock_guard<std::mutex> lk(g_inst_map_mtx);
-    auto it = g_inst_map.find(pd);
-    return it == g_inst_map.end() ? nullptr : it->second;
+// Per-instance Instance* lookup, lock-free. We attach our Instance pointer
+// via libpd_set_instancedata after libpd_new_instance, and retrieve it
+// inside hooks (which run on the audio thread) via libpd_get_instancedata.
+// A mutex-protected map would deadlock the SPI callback when patches emit
+// printable errors at 300/sec.
+static inline Instance* current_instance_from_libpd() {
+    return static_cast<Instance*>(libpd_get_instancedata());
 }
 
 // ===== libpd hooks =====
@@ -163,11 +159,7 @@ void* create_instance(const char* module_dir, const char* /*json_defaults*/) {
     auto* inst = new Instance();
     inst->pd = libpd_new_instance();
     libpd_set_instance(inst->pd);
-
-    {
-        std::lock_guard<std::mutex> lk(g_inst_map_mtx);
-        g_inst_map[inst->pd] = inst;
-    }
+    libpd_set_instancedata(inst, nullptr);
 
     // Hooks are PER-INSTANCE after libpd_init — install on this instance now.
     install_instance_hooks();
@@ -215,10 +207,6 @@ void destroy_instance(void* p) {
         if (inst->mother_handle) {
             organelle::close_patch(inst->mother_handle);
             inst->mother_handle = nullptr;
-        }
-        {
-            std::lock_guard<std::mutex> lk(g_inst_map_mtx);
-            g_inst_map.erase(inst->pd);
         }
         libpd_free_instance(inst->pd);
     }
