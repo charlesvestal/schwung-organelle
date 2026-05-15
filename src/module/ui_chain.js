@@ -22,11 +22,11 @@ let scrollOffset = 0;
 let needsBrowserRedraw = true;
 let midiOutDrainCounter = 0;
 
-// Aux long-press tracking: short touch sends [r aux]; long touch (>500ms)
+// Aux long-press tracking: short touch sends [r aux]; long touch (>2s)
 // returns to the patch list. Matches the Organelle Vol+Aux gesture for
 // reaching the OS patch menu, since we don't have access to Move's Back
 // button (shadow_ui intercepts it before our handler).
-const AUX_HOLD_MS = 500;
+const AUX_HOLD_MS = 2000;
 let auxPressTime = 0;
 let auxLongFired = false;
 
