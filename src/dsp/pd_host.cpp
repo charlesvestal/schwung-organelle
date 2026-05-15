@@ -43,8 +43,9 @@ struct Instance {
     // Slot params
     int            octave_transpose = 0;
     bool           audio_in_enable = true;
-    float          gain = 0.5f;            // -6dB default — Organelle patches
-                                           // can be hot (5 voices in Genny-1)
+    float          gain = 0.3f;            // ~-10dB. Organelle patches are
+                                           // hot — Genny-1 sums 5 voices and
+                                           // peaks well above unity.
 
     // Audio scratch (no realtime alloc).
     float          in_buf[MOVE_FRAMES_PER_BLOCK * 2];
@@ -494,16 +495,10 @@ void render_block(void* p, int16_t* out_lr, int frames) {
         std::memset(inst->out_buf, 0, sizeof(float) * total);
     }
 
-    // ----- Output (interleaved float → interleaved int16, gain) -----
-    // Soft saturation via tanh-like quadratic: x - x^3/3 for |x| < 1, clamp
-    // beyond. Cheaper than tanhf and audibly smoother than hard clip when
-    // Organelle patches stack voices above unity.
+    // ----- Output (interleaved float → interleaved int16, gain, hard clip) -----
     const float g = inst->gain;
     for (int i = 0; i < total; ++i) {
         float s = inst->out_buf[i] * g;
-        if (s > 1.5f) s = 1.5f;
-        else if (s < -1.5f) s = -1.5f;
-        s = s - (s * s * s) / 3.0f;       // soft saturation
         if (s >  1.0f) s =  1.0f;
         if (s < -1.0f) s = -1.0f;
         out_lr[i] = static_cast<int16_t>(s * 32767.0f);

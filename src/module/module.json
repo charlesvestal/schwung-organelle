@@ -25,7 +25,7 @@
             { "key": "patch_path",       "label": "Patch",         "type": "enum",  "options_param": "patch_list" },
             { "key": "octave_transpose", "label": "Octave",        "type": "int",   "min": -4, "max": 4, "default": 0 },
             { "key": "audio_in_enable",  "label": "Line In to Pd", "type": "enum",  "options": ["Off", "On"], "default": "On" },
-            { "key": "gain",             "label": "Output Gain",   "type": "float", "min": 0, "max": 2.0, "step": 0.01, "default": 0.5 },
+            { "key": "gain",             "label": "Output Gain",   "type": "float", "min": 0, "max": 2.0, "step": 0.01, "default": 0.3 },
             { "key": "fs_source",        "label": "Foot Switch",   "type": "enum",  "options": ["Knob8 Touch", "Off"], "default": "Knob8 Touch" }
           ],
           "knobs": [
@@ -46,7 +46,7 @@
     "patch_path": "",
     "octave_transpose": 0,
     "audio_in_enable": "On",
-    "gain": 0.5,
+    "gain": 0.3,
     "fs_source": "Knob8 Touch"
   }
 }
