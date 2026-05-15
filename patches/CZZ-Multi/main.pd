@@ -6,7 +6,7 @@
 #X obj 75 230 patchmenu;
 #X obj 107 143 s enableSubMenu;
 #X obj 75 41 loadbang;
-#X msg 75 143 0;
+#X msg 75 143 1;
 #X obj 75 120 t b b;
 #N canvas 458 305 990 407 mapping 0;
 #X obj 584 306 throw~ outL;
