@@ -92,6 +92,7 @@ ${CROSS_PREFIX}g++ -O3 -shared -fPIC \
 echo "Packaging..."
 cat src/module/module.json > dist/organelle/module.json
 cat src/module/ui_chain.js > dist/organelle/ui_chain.js
+cat src/module/font_organelle.mjs > dist/organelle/font_organelle.mjs
 cat src/dsp/mother.pd > dist/organelle/mother.pd
 cat build/dsp.so > dist/organelle/dsp.so
 [ -f src/module/help.json ] && cat src/module/help.json > dist/organelle/help.json

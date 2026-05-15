@@ -9,6 +9,7 @@
  */
 
 import { shouldFilterMessage, decodeDelta } from '/data/UserData/schwung/shared/input_filter.mjs';
+import { printSmall } from '/data/UserData/schwung/modules/sound_generators/organelle/font_organelle.mjs';
 
 const SCREEN_W = 128;
 const SCREEN_H = 64;
@@ -132,15 +133,15 @@ function exitToBrowser() {
 
 function drawDefaultScreen() {
     clear_screen();
-    // Info bar (y=0-8): patch name. Organelle's OS uses println_8 at
-    // (2, 0); Schwung's print() uses the same 8-tall font baseline.
-    if (currentPatchName) print(2, 0, currentPatchName, 1);
-    // 5 text lines starting at y = 9, each 11px tall.
+    // Info bar (y=0-8): patch name, rendered with the ported Organelle
+    // 5x8 small font for pixel-accurate parity with the real device.
+    if (currentPatchName) printSmall(currentPatchName, 2, 0, 1);
+    // 5 text lines: y = calcxpos(n) + 1 = 9 + (n-1)*11 + 1.
     for (let n = 1; n <= 5; n++) {
         const txt = screenLines[n - 1];
         if (!txt) continue;
-        const y = 9 + (n - 1) * 11 + 1;   // +1 like calcxpos's println_8 offset
-        print(2, y, txt, 1);
+        const y = 9 + (n - 1) * 11 + 1;
+        printSmall(txt, 2, y, 1);
     }
     host_flush_display();
     defaultDirty = false;
