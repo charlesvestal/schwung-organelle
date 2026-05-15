@@ -172,14 +172,16 @@ void on_pd_pitchbend(int ch, int val) {
     inst->midi_out_head.store(next, std::memory_order_release);
 }
 
-// Pd patches can emit error prints during render_block (which runs on the
-// realtime SPI callback thread). Calling g_host->log from there triggers
-// file I/O and will stall audio — Genny-1 spams "screenLine: no such
-// object" at ~300/sec and the device locks up. No print hook for now.
+// Pd's default print path is fprintf(stderr) / sys_printhook. In the
+// schwung shim context stderr is invalid (glibc 0xfbad8001 — segfault on
+// touch), and Pd patches emit "X: no such object" errors at high rate.
+// Install a NO-OP print hook so libpd never calls into stdio.
+void on_pd_print_noop(const char* /*s*/) {}
 
 // libpd hooks are PER-INSTANCE after libpd_init. Set them AFTER each
 // libpd_new_instance + libpd_set_instance, not once globally.
 void install_instance_hooks() {
+    libpd_set_printhook(on_pd_print_noop);
     libpd_set_messagehook(on_pd_message);
     libpd_set_listhook(on_pd_list);
     libpd_set_symbolhook(on_pd_symbol);
