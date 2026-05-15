@@ -47,6 +47,10 @@ struct Instance {
                                            // hot — Genny-1 sums 5 voices and
                                            // peaks well above unity.
 
+    // Cached screen lines, so JS can resync after the slot UI is suspended
+    // and re-entered (the screen-ops ring is one-shot per draw).
+    char           cached_lines[5][organelle::OP_TEXT_MAX] = {};
+
     // Audio scratch (no realtime alloc).
     float          in_buf[MOVE_FRAMES_PER_BLOCK * 2];
     float          out_buf[MOVE_FRAMES_PER_BLOCK * 2];
@@ -75,6 +79,35 @@ static inline Instance* current_instance_from_libpd() {
 
 // ===== libpd hooks =====
 
+// Update the per-instance cache so the UI can resync after suspend.
+static void cache_screen_line(Instance* inst, int n, const char* text) {
+    if (!inst || n < 1 || n > 5 || !text) return;
+    std::strncpy(inst->cached_lines[n - 1], text,
+                 organelle::OP_TEXT_MAX - 1);
+    inst->cached_lines[n - 1][organelle::OP_TEXT_MAX - 1] = 0;
+}
+
+static void render_line_text(const char* selector, int argc, t_atom* argv,
+                             char* out, int cap) {
+    int o = 0;
+    if (selector) {
+        for (const char* s = selector; *s && o < cap - 1; ++s) out[o++] = *s;
+    }
+    for (int i = 0; i < argc && o < cap - 2; ++i) {
+        if (o > 0 && o < cap - 2) out[o++] = ' ';
+        if (libpd_is_symbol(argv + i)) {
+            const char* s = libpd_get_symbol(argv + i);
+            while (s && *s && o < cap - 1) out[o++] = *s++;
+        } else if (libpd_is_float(argv + i)) {
+            char tmp[16];
+            int tn = std::snprintf(tmp, sizeof(tmp), "%g",
+                                   libpd_get_float(argv + i));
+            for (int k = 0; k < tn && o < cap - 1; ++k) out[o++] = tmp[k];
+        }
+    }
+    out[o] = 0;
+}
+
 void on_pd_message(const char* recv, const char* sel, int argc, t_atom* argv) {
     Instance* inst = current_instance_from_libpd();
     if (!inst || !recv || !sel) return;
@@ -85,12 +118,14 @@ void on_pd_message(const char* recv, const char* sel, int argc, t_atom* argv) {
     if (std::strncmp(recv, "screenLine", 10) == 0) {
         const int n = recv[10] - '0';
         if (n < 1 || n > 5) return;
-        // Re-prepend the selector as plain text — avoids gensym() on the
-        // audio thread which can allocate and crash.
         char prefix[64];
         std::snprintf(prefix, sizeof(prefix), "%s ", sel);
         organelle::handle_screen_line_with_selector(n, prefix, argc, argv,
                                                     inst->screen_ring);
+        // Mirror into per-instance cache for UI resync.
+        char line[organelle::OP_TEXT_MAX];
+        render_line_text(prefix, argc, argv, line, sizeof(line));
+        cache_screen_line(inst, n, line);
     }
 }
 
@@ -101,6 +136,9 @@ void on_pd_list(const char* recv, int argc, t_atom* argv) {
         int n = recv[10] - '0';
         if (n >= 1 && n <= 5) {
             organelle::handle_screen_line(n, argc, argv, inst->screen_ring);
+            char line[organelle::OP_TEXT_MAX];
+            render_line_text(nullptr, argc, argv, line, sizeof(line));
+            cache_screen_line(inst, n, line);
         }
     }
 }
@@ -111,9 +149,9 @@ void on_pd_symbol(const char* recv, const char* sym) {
     if (std::strncmp(recv, "screenLine", 10) == 0) {
         int n = recv[10] - '0';
         if (n >= 1 && n <= 5) {
-            // No gensym; just stuff the symbol text into the op directly.
             organelle::handle_screen_line_with_selector(n, sym, 0, nullptr,
                                                         inst->screen_ring);
+            cache_screen_line(inst, n, sym);
         }
     }
 }
@@ -471,6 +509,25 @@ int get_param(void* p, const char* key, char* buf, int buf_len) {
             g_host->log(line);
         }
         return n;
+    }
+    if (std::strcmp(key, "screen_state") == 0) {
+        // Returns the 5 cached screenLine strings as a JSON array — used by
+        // JS on init() to recover the home screen after the slot UI is
+        // suspended and re-entered.
+        int w = 0;
+        buf[w++] = '[';
+        for (int i = 0; i < 5; ++i) {
+            if (i > 0 && w < buf_len - 1) buf[w++] = ',';
+            buf[w++] = '"';
+            for (const char* s = inst->cached_lines[i]; *s && w < buf_len - 3; ++s) {
+                if (*s == '"' || *s == '\\') buf[w++] = '\\';
+                buf[w++] = *s;
+            }
+            if (w < buf_len - 1) buf[w++] = '"';
+        }
+        if (w < buf_len) buf[w++] = ']';
+        if (w < buf_len) buf[w] = 0;
+        return w;
     }
     if (std::strcmp(key, "midi_out_queue") == 0) {
         // Drain MIDI-out ring into a compact base64-ish hex string:

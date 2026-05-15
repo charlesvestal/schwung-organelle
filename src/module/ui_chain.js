@@ -244,7 +244,21 @@ function init() {
     if (cur) {
         state = 'running';
         currentPatchName = patchNameFromPath(cur);
-        screenLines = ['', '', '', '', ''];
+        // Recover the home-screen text from the DSP-side cache (the screen-
+        // ops ring is one-shot per draw, so without this the screen would
+        // stay blank until the patch re-emits its lines — e.g. on a knob
+        // turn or pad press).
+        const stateJson = host_module_get_param('screen_state');
+        if (stateJson) {
+            try {
+                const lines = JSON.parse(stateJson);
+                if (Array.isArray(lines)) {
+                    for (let i = 0; i < 5; i++) screenLines[i] = lines[i] || '';
+                }
+            } catch (_e) { screenLines = ['', '', '', '', '']; }
+        } else {
+            screenLines = ['', '', '', '', ''];
+        }
         patchHasDrawn = false;
         defaultDirty = true;
         clear_screen();
