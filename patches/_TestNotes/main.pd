@@ -1,0 +1,6 @@
+#N canvas 0 0 600 300 10;
+#X obj 30 30 r notes;
+#X msg 30 80 gFillArea 0 0 128 64 0 \, gPrintln 4 4 16 1 notes \, gPrintln 4 28 8 1 a1 \$1 \, gPrintln 4 40 8 1 a2 \$2 \, gFlip;
+#X obj 30 120 s oled;
+#X connect 0 0 1 0;
+#X connect 1 0 2 0;

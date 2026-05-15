@@ -104,8 +104,15 @@ function loadKnobLabels(patchPath) {
     } catch (_e) {}
 }
 
+function pushKnobValuesToPatch() {
+    for (let i = 1; i <= 4; i++) {
+        host_module_set_param(`knob${i}`, String(knobValues[i]));
+    }
+}
+
 function enterRunning(patch) {
     host_module_set_param('patch_path', patch.path);
+    pushKnobValuesToPatch();        // patches read r knob1..4 on loadbang
     state = 'running';
     currentPatchName = patch.name;
     loadKnobLabels(patch.path);

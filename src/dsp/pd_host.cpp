@@ -227,20 +227,20 @@ void on_midi(void* p, const uint8_t* msg, int len, int /*source*/) {
         if (pitch < 0) pitch = 0;
         if (pitch > 127) pitch = 127;
         libpd_noteon(ch, pitch, msg[2]);
-        // Also fire [r notes] (Organelle convention: list of [pitch velocity]).
-        libpd_start_message(2);
-        libpd_add_float(static_cast<float>(pitch));
-        libpd_add_float(static_cast<float>(msg[2]));
-        libpd_finish_list("notes");
+        // Send list [pitch velocity] to [r notes] (Organelle convention).
+        t_atom notes_av[2];
+        SETFLOAT(&notes_av[0], static_cast<float>(pitch));
+        SETFLOAT(&notes_av[1], static_cast<float>(msg[2]));
+        libpd_list("notes", 2, notes_av);
     } else if (hi == 0x80 && len >= 3) {
         int pitch = msg[1] + inst->octave_transpose * 12;
         if (pitch < 0) pitch = 0;
         if (pitch > 127) pitch = 127;
         libpd_noteon(ch, pitch, 0);
-        libpd_start_message(2);
-        libpd_add_float(static_cast<float>(pitch));
-        libpd_add_float(0.0f);
-        libpd_finish_list("notes");
+        t_atom notes_av[2];
+        SETFLOAT(&notes_av[0], static_cast<float>(pitch));
+        SETFLOAT(&notes_av[1], 0.0f);
+        libpd_list("notes", 2, notes_av);
     } else if (hi == 0xB0 && len >= 3) {
         libpd_controlchange(ch, msg[1], msg[2]);
     } else if (hi == 0xC0 && len >= 2) {
