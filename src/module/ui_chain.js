@@ -27,6 +27,13 @@ let midiOutDrainCounter = 0;
 const knobValues = [0, 512, 512, 512, 512];   // indexes 1..4 used; 0 unused
 const KNOB_STEP = 8;                          // 128 ticks → full range
 
+// Default screen state — drawn for patches that don't emit [s oled]
+// themselves (most C&G stock patches relied on the Organelle OS for this).
+let currentPatchName = '';
+let knobLabels = ['', '', '', ''];
+let patchHasDrawn = false;
+let lastDrawnKnobs = [-1, -1, -1, -1];
+
 /* ----- helpers ----- */
 
 function fetchPatchList() {
@@ -79,10 +86,31 @@ function drawBrowser() {
     needsBrowserRedraw = false;
 }
 
+function patchNameFromPath(p) {
+    const i = p ? p.lastIndexOf('/') : -1;
+    return i >= 0 ? p.substring(i + 1) : (p || '');
+}
+
+function loadKnobLabels(patchPath) {
+    knobLabels = ['', '', '', ''];
+    if (!patchPath) return;
+    const meta = host_read_file(`${patchPath}/metadata.json`);
+    if (!meta) return;
+    try {
+        const json = JSON.parse(meta);
+        if (Array.isArray(json.knob_labels)) {
+            for (let i = 0; i < 4; i++) knobLabels[i] = json.knob_labels[i] || '';
+        }
+    } catch (_e) {}
+}
+
 function enterRunning(patch) {
     host_module_set_param('patch_path', patch.path);
     state = 'running';
-    // Don't draw anything yet — Pd patch will paint via screen_ops.
+    currentPatchName = patch.name;
+    loadKnobLabels(patch.path);
+    patchHasDrawn = false;
+    lastDrawnKnobs = [-1, -1, -1, -1];
     clear_screen();
     host_flush_display();
 }
@@ -90,10 +118,63 @@ function enterRunning(patch) {
 function exitToBrowser() {
     host_module_set_param('patch_path', '');
     state = 'browser';
+    currentPatchName = '';
+    patchHasDrawn = false;
     patches = fetchPatchList();
     if (selectedIndex >= patches.length) selectedIndex = Math.max(0, patches.length - 1);
     needsBrowserRedraw = true;
     drawBrowser();
+}
+
+/* ----- default screen (Organelle "Mother" style) ----- */
+// Drawn when state=running AND the patch hasn't emitted any [s oled] yet.
+// Shows patch name + 4 knob value bars, mirroring what the Organelle OS
+// renders by default for patches without custom UI.
+
+function drawDefaultScreen() {
+    clear_screen();
+    const SCREEN_W = 128;
+    print(2, 0, currentPatchName || 'Patch', 1);
+
+    const startY = 18;
+    const lineH  = 11;
+    const labelW = 50;
+    const valueW = 22;
+    const barX   = labelW + 2;
+    const barW   = SCREEN_W - barX - valueW;
+
+    for (let i = 0; i < 4; i++) {
+        const v = knobValues[i + 1] / 1023;
+        const y = startY + i * lineH;
+        const lab = (knobLabels[i] || `K${i + 1}`).substring(0, 8);
+        print(2, y, `${lab}:`, 1);
+
+        // Bar outline (1px border, 5px tall fill)
+        const bx = barX, by = y, bw = barW, bh = 6;
+        draw_line(bx,        by,        bx + bw - 1, by,        1);
+        draw_line(bx,        by + bh - 1, bx + bw - 1, by + bh - 1, 1);
+        draw_line(bx,        by,        bx,        by + bh - 1, 1);
+        draw_line(bx + bw - 1, by,        bx + bw - 1, by + bh - 1, 1);
+        const fillW = Math.max(0, Math.min(bw - 2, Math.round(v * (bw - 2))));
+        if (fillW > 0) fill_rect(bx + 1, by + 1, fillW, bh - 2, 1);
+
+        // Percent on the right
+        const pct = Math.round(v * 100);
+        print(bx + bw + 2, y, `${pct}`, 1);
+    }
+    host_flush_display();
+}
+
+function updateDefaultIfNeeded() {
+    if (state !== 'running' || patchHasDrawn) return;
+    let changed = lastDrawnKnobs[0] < 0;   // first call after entering running
+    for (let i = 0; i < 4; i++) {
+        if (knobValues[i + 1] !== lastDrawnKnobs[i]) {
+            changed = true;
+            lastDrawnKnobs[i] = knobValues[i + 1];
+        }
+    }
+    if (changed) drawDefaultScreen();
 }
 
 /* ----- screen op execution (running state) ----- */
@@ -168,6 +249,10 @@ function init() {
     const cur = fetchInitialPatchPath();
     if (cur) {
         state = 'running';
+        currentPatchName = patchNameFromPath(cur);
+        loadKnobLabels(cur);
+        patchHasDrawn = false;
+        lastDrawnKnobs = [-1, -1, -1, -1];
         clear_screen();
         host_flush_display();
     } else {
@@ -184,11 +269,17 @@ function tick() {
     }
     // Running state.
     const json = host_module_get_param('screen_ops');
+    let drewFromPatch = false;
     if (json && json.length > 2) {  // ignore empty "[]"
         let ops;
         try { ops = JSON.parse(json); } catch (_e) { ops = null; }
-        if (Array.isArray(ops) && ops.length) executeScreenOps(ops);
+        if (Array.isArray(ops) && ops.length) {
+            executeScreenOps(ops);
+            patchHasDrawn = true;
+            drewFromPatch = true;
+        }
     }
+    if (!drewFromPatch) updateDefaultIfNeeded();
     // Drain MIDI out every 2 ticks (~22 Hz, plenty for note timing).
     if ((++midiOutDrainCounter & 1) === 0) drainMidiOut();
 }
