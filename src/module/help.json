@@ -1,0 +1,203 @@
+{
+  "title": "Organelle",
+  "children": [
+    {
+      "title": "Overview",
+      "lines": [
+        "Run Critter &",
+        "Guitari Organelle",
+        "Pure Data patches",
+        "on Move.",
+        "",
+        "Embeds libpd, ports",
+        "the Organelle home-",
+        "screen and the 5x8",
+        "OLED font verbatim.",
+        "",
+        "Patches live in:",
+        "/data/UserData/",
+        "schwung/organelle-",
+        "patches/",
+        "",
+        "Drop folders that",
+        "contain main.pd",
+        "via SFTP, or use",
+        "the bundled set."
+      ]
+    },
+    {
+      "title": "Controls",
+      "children": [
+        {
+          "title": "Keyboard",
+          "lines": [
+            "Pads send MIDI",
+            "notes to the patch",
+            "via [r notes] AND",
+            "[notein]. Use Move",
+            "track octave keys",
+            "to shift range."
+          ]
+        },
+        {
+          "title": "Knobs",
+          "lines": [
+            "Knob 1..4 publish",
+            "to [r knob1..4]",
+            "as 0..1 and to",
+            "[r knob1..4Raw]",
+            "as 0..1023, just",
+            "like Organelle's",
+            "mother.pd does."
+          ]
+        },
+        {
+          "title": "Aux Button",
+          "lines": [
+            "Tap knob 7 to",
+            "return to patch",
+            "list. Matches the",
+            "Aux button on the",
+            "real Organelle —",
+            "it's the system",
+            "key, not a patch",
+            "input."
+          ]
+        },
+        {
+          "title": "Foot Switch",
+          "lines": [
+            "Touch knob 8 to",
+            "drive [r fs] in",
+            "the patch.",
+            "",
+            "On/off momentary;",
+            "release = fs 0."
+          ]
+        },
+        {
+          "title": "Encoder",
+          "lines": [
+            "Jog wheel maps to",
+            "[r encoderInput]",
+            "(deltas) and",
+            "[r encoderButton]",
+            "(click)."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Screen",
+      "lines": [
+        "Patches that draw",
+        "their own UI via",
+        "[s oled gPrintln],",
+        "[s oled gFillArea]",
+        "etc. take over the",
+        "screen.",
+        "",
+        "Patches that just",
+        "set [s screenLine1",
+        "..5] get the",
+        "default Organelle",
+        "home screen with",
+        "patch name on top",
+        "and 5 text rows.",
+        "",
+        "Identical layout to",
+        "OledScreen.cpp."
+      ]
+    },
+    {
+      "title": "Patches",
+      "children": [
+        {
+          "title": "Bundled",
+          "lines": [
+            "Genny 1 — synth",
+            "Drone 1 — drone",
+            "Dropper — synth",
+            "Sine Synth — demo",
+            "_Hello — smoke",
+            "test",
+            "",
+            "All BSD-3 from",
+            "Critter & Guitari",
+            "(except hand-",
+            "written demos)."
+          ]
+        },
+        {
+          "title": "Adding",
+          "lines": [
+            "Drop any folder",
+            "containing main.pd",
+            "into the patches",
+            "directory.",
+            "",
+            "scp -r MyPatch \\",
+            "  ableton@move.local",
+            "  :/data/UserData/",
+            "  schwung/organelle-",
+            "  patches/",
+            "",
+            "Refresh patch list",
+            "by re-entering the",
+            "browser."
+          ]
+        },
+        {
+          "title": "Compatibility",
+          "lines": [
+            "v0.1 supports",
+            "vanilla Pd only.",
+            "",
+            "Patches using",
+            "externals like",
+            "moog~, pvu~,",
+            "freeverb~,",
+            "abl_link~ won't",
+            "load.",
+            "",
+            "Externals support",
+            "planned for v0.2."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Audio Routing",
+      "lines": [
+        "Bundled mother.pd",
+        "provides:",
+        "  catch~ outL/outR",
+        "  → dac~",
+        "  adc~ → s~ inL/inR",
+        "",
+        "Patches send audio",
+        "via [throw~ outL]",
+        "and [throw~ outR],",
+        "and read line-in",
+        "via [r~ inL] and",
+        "[r~ inR]."
+      ]
+    },
+    {
+      "title": "About",
+      "lines": [
+        "Module by",
+        "charlesvestal.",
+        "",
+        "Pure Data, libpd,",
+        "the 5x8 font, and",
+        "the bundled patch",
+        "set are BSD-3-",
+        "Clause from their",
+        "respective authors.",
+        "",
+        "See LICENSE."
+      ]
+    }
+  ]
+}
