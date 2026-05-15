@@ -134,22 +134,14 @@ void on_pd_pitchbend(int ch, int val) {
     inst->midi_out_head.store(next, std::memory_order_release);
 }
 
-void on_pd_print(const char* s) {
-    if (!s || !*s) return;
-    if (g_host && g_host->log) {
-        char line[512];
-        std::snprintf(line, sizeof(line), "[organelle/pd] %s", s);
-        // libpd's print is sometimes line-buffered, sometimes per-piece; trim newlines.
-        const int n = static_cast<int>(std::strlen(line));
-        if (n && (line[n - 1] == '\n' || line[n - 1] == '\r')) line[n - 1] = 0;
-        g_host->log(line);
-    }
-}
+// Pd patches can emit error prints during render_block (which runs on the
+// realtime SPI callback thread). Calling g_host->log from there triggers
+// file I/O and will stall audio — Genny-1 spams "screenLine: no such
+// object" at ~300/sec and the device locks up. No print hook for now.
 
 // libpd hooks are PER-INSTANCE after libpd_init. Set them AFTER each
 // libpd_new_instance + libpd_set_instance, not once globally.
 void install_instance_hooks() {
-    libpd_set_printhook(on_pd_print);
     libpd_set_messagehook(on_pd_message);
     libpd_set_noteonhook(on_pd_noteon);
     libpd_set_controlchangehook(on_pd_controlchange);
@@ -163,9 +155,6 @@ void* create_instance(const char* module_dir, const char* /*json_defaults*/) {
     {
         std::lock_guard<std::mutex> lk(g_libpd_global_mtx);
         if (!g_libpd_inited) {
-            // Set the print hook BEFORE libpd_init so we capture global init
-            // prints (sys_printhook routes them while s_initialized is false).
-            libpd_set_printhook(on_pd_print);
             libpd_init();
             g_libpd_inited = true;
         }
@@ -428,8 +417,16 @@ int get_param(void* p, const char* key, char* buf, int buf_len) {
         return to_copy;
     }
     if (std::strcmp(key, "patch_list") == 0) {
-        return organelle::list_patches_json(
+        const int n = organelle::list_patches_json(
             "/data/UserData/schwung/organelle-patches", buf, buf_len);
+        if (g_host && g_host->log) {
+            char line[256];
+            std::snprintf(line, sizeof(line),
+                "[organelle] patch_list: %d bytes, buf_len=%d, head=%.80s",
+                n, buf_len, buf);
+            g_host->log(line);
+        }
+        return n;
     }
     if (std::strcmp(key, "midi_out_queue") == 0) {
         // Drain MIDI-out ring into a compact base64-ish hex string:
