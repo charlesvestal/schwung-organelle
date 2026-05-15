@@ -55,37 +55,60 @@ bool sandbox_translate(const char* in, char* out, int out_cap) {
 
 } // namespace organelle
 
-// ---- ld --wrap interceptors -------------------------------------------------
+// ---- ld --wrap interceptors at the libc boundary ---------------------------
+//
+// We wrap open/open64/fopen/fopen64 (libc) rather than sys_open/sys_fopen
+// (libpd's internal wrappers) because --wrap only catches cross-archive
+// references, and libpd's sys_open is defined inside libpd-multi.a alongside
+// its callers. libc IS a separate (shared) library, so --wrap=open works.
 
 extern "C" {
 
-int  __real_sys_open(const char* path, int oflag, ...);
-FILE* __real_sys_fopen(const char* filename, const char* mode);
-int  __real_sys_close(int fd);
+int   __real_open(const char* path, int oflag, ...);
+int   __real_open64(const char* path, int oflag, ...);
+FILE* __real_fopen(const char* path, const char* mode);
+FILE* __real_fopen64(const char* path, const char* mode);
 
-int __wrap_sys_open(const char* path, int oflag, ...) {
+int __wrap_open(const char* path, int oflag, ...) {
     char buf[1024];
     const char* p = path;
-    if (organelle::sandbox_translate(path, buf, sizeof(buf))) p = buf;
+    if (path && organelle::sandbox_translate(path, buf, sizeof(buf))) p = buf;
     if (oflag & O_CREAT) {
         va_list ap;
         va_start(ap, oflag);
         int mode = va_arg(ap, int);
         va_end(ap);
-        return __real_sys_open(p, oflag, mode);
+        return __real_open(p, oflag, mode);
     }
-    return __real_sys_open(p, oflag);
+    return __real_open(p, oflag);
 }
 
-FILE* __wrap_sys_fopen(const char* filename, const char* mode) {
+int __wrap_open64(const char* path, int oflag, ...) {
     char buf[1024];
-    const char* p = filename;
-    if (organelle::sandbox_translate(filename, buf, sizeof(buf))) p = buf;
-    return __real_sys_fopen(p, mode);
+    const char* p = path;
+    if (path && organelle::sandbox_translate(path, buf, sizeof(buf))) p = buf;
+    if (oflag & O_CREAT) {
+        va_list ap;
+        va_start(ap, oflag);
+        int mode = va_arg(ap, int);
+        va_end(ap);
+        return __real_open64(p, oflag, mode);
+    }
+    return __real_open64(p, oflag);
 }
 
-int __wrap_sys_close(int fd) {
-    return __real_sys_close(fd);
+FILE* __wrap_fopen(const char* path, const char* mode) {
+    char buf[1024];
+    const char* p = path;
+    if (path && organelle::sandbox_translate(path, buf, sizeof(buf))) p = buf;
+    return __real_fopen(p, mode);
+}
+
+FILE* __wrap_fopen64(const char* path, const char* mode) {
+    char buf[1024];
+    const char* p = path;
+    if (path && organelle::sandbox_translate(path, buf, sizeof(buf))) p = buf;
+    return __real_fopen64(p, mode);
 }
 
 } // extern "C"

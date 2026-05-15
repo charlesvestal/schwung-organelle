@@ -85,7 +85,7 @@ ${CROSS_PREFIX}g++ -O3 -shared -fPIC \
     -Isrc/dsp \
     -I$LIBPD_DIR/libpd_wrapper \
     -I$LIBPD_DIR/pure-data/src \
-    -Wl,--wrap=sys_open -Wl,--wrap=sys_fopen -Wl,--wrap=sys_close \
+    -Wl,--wrap=open -Wl,--wrap=open64 -Wl,--wrap=fopen -Wl,--wrap=fopen64 \
     "$LIBPD_BUILD/libpd-multi.a" \
     -o build/dsp.so \
     -lm -lpthread
