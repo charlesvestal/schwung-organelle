@@ -1,0 +1,11 @@
+#N canvas 0 0 400 200 10;
+#X obj 30 30 catch~ outL;
+#X obj 130 30 catch~ outR;
+#X obj 30 80 dac~;
+#X obj 250 30 adc~;
+#X obj 250 60 s~ inL;
+#X obj 320 60 s~ inR;
+#X connect 0 0 2 0;
+#X connect 1 0 2 1;
+#X connect 3 0 4 0;
+#X connect 3 1 5 0;

@@ -36,7 +36,9 @@ std::mutex g_libpd_global_mtx;
 struct Instance {
     t_pdinstance*  pd = nullptr;
     void*          current_patch = nullptr;
+    void*          mother_handle = nullptr;   // host wrapper providing catch~/dac~
     std::string    current_patch_path;
+    std::string    module_dir;
 
     // Slot params
     int            octave_transpose = 0;
@@ -157,7 +159,7 @@ void install_instance_hooks() {
 
 // ===== plugin entry points =====
 
-void* create_instance(const char* /*module_dir*/, const char* /*json_defaults*/) {
+void* create_instance(const char* module_dir, const char* /*json_defaults*/) {
     {
         std::lock_guard<std::mutex> lk(g_libpd_global_mtx);
         if (!g_libpd_inited) {
@@ -191,6 +193,21 @@ void* create_instance(const char* /*module_dir*/, const char* /*json_defaults*/)
     libpd_add_float(1.0f);
     libpd_finish_message("pd", "dsp");
 
+    // Load the Organelle "mother" wrapper. It provides catch~ outL/outR →
+    // dac~ (so patches using [throw~ outL]/[throw~ outR] are audible) and
+    // adc~ → s~ inL/inR (so patches using [r~ inL]/[r~ inR] get line-in).
+    if (module_dir && *module_dir) {
+        inst->module_dir = module_dir;
+        inst->mother_handle = libpd_openfile("mother.pd", module_dir);
+        if (g_host && g_host->log) {
+            char line[256];
+            std::snprintf(line, sizeof(line),
+                "[organelle] mother.pd %s (dir=%s)",
+                inst->mother_handle ? "loaded" : "FAILED to load", module_dir);
+            g_host->log(line);
+        }
+    }
+
     if (g_host && g_host->log) {
         g_host->log("[organelle] create_instance: libpd ready, dsp on");
     }
@@ -205,6 +222,10 @@ void destroy_instance(void* p) {
         if (inst->current_patch) {
             organelle::close_patch(inst->current_patch);
             inst->current_patch = nullptr;
+        }
+        if (inst->mother_handle) {
+            organelle::close_patch(inst->mother_handle);
+            inst->mother_handle = nullptr;
         }
         {
             std::lock_guard<std::mutex> lk(g_inst_map_mtx);
