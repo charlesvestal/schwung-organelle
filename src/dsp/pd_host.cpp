@@ -421,8 +421,19 @@ void set_param(void* p, const char* key, const char* val) {
         return;
     }
     if (std::strcmp(key, "fs") == 0)            { send_float("fs",     fv != 0.0f ? 1.0f : 0.0f); return; }
-    if (std::strcmp(key, "encoderInput") == 0)  { send_float("encoderInput", fv); return; }
-    if (std::strcmp(key, "encoderButton") == 0) { send_float("encoderButton", fv != 0.0f ? 1.0f : 0.0f); return; }
+    if (std::strcmp(key, "encoderInput") == 0)  {
+        // Organelle mother.pd publishes the encoder turn to [s enc]; some
+        // patches read [r encoderInput] (legacy). Send both.
+        send_float("enc", fv);
+        send_float("encoderInput", fv);
+        return;
+    }
+    if (std::strcmp(key, "encoderButton") == 0) {
+        const float v = fv != 0.0f ? 1.0f : 0.0f;
+        send_float("encbut", v);
+        send_float("encoderButton", v);
+        return;
+    }
     if (std::strcmp(key, "chain_tempo") == 0)   { send_float("clock", fv); inst->last_tempo_sent = fv; return; }
 
     if (std::strcmp(key, "state") == 0 && val) {
