@@ -33,6 +33,19 @@ ssh ableton@move.local "bash -c '
     fi
 '"
 
+# Seed FS sandbox: patches see /root/*, /sdcard/*, /usbdrive/* redirected
+# into this directory. /root/version lets OS-version gated patches load.
+echo "Seeding FS sandbox..."
+ssh ableton@move.local "bash -c '
+    SBX=/data/UserData/schwung/organelle-sandbox
+    mkdir -p \$SBX/root \$SBX/sdcard \$SBX/usbdrive \$SBX/tmp
+    if [ ! -f \$SBX/root/version ]; then
+        echo 5 > \$SBX/root/version
+        echo \"  Wrote sandbox /root/version (OS gate stub).\"
+    fi
+    chmod -R a+rw \$SBX
+'"
+
 echo "Setting permissions..."
 ssh ableton@move.local "chmod -R a+rw /data/UserData/schwung/modules/sound_generators/organelle"
 ssh ableton@move.local "chmod -R a+rw /data/UserData/schwung/organelle-patches"
