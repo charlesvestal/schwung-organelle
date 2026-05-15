@@ -54,14 +54,17 @@
         {
           "title": "Aux Button",
           "lines": [
-            "Tap knob 7 to",
-            "return to patch",
-            "list. Matches the",
-            "Aux button on the",
-            "real Organelle —",
-            "it's the system",
-            "key, not a patch",
-            "input."
+            "Tap knob 7 to send",
+            "Aux to the patch",
+            "([r aux] / [r",
+            "auxKey]). Patches",
+            "like CZZ use it to",
+            "cycle knob pages.",
+            "",
+            "Hold knob 7 for",
+            "half a second to",
+            "return to the",
+            "patch list."
           ]
         },
         {

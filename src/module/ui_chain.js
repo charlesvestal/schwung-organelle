@@ -22,6 +22,14 @@ let scrollOffset = 0;
 let needsBrowserRedraw = true;
 let midiOutDrainCounter = 0;
 
+// Aux long-press tracking: short touch sends [r aux]; long touch (>500ms)
+// returns to the patch list. Matches the Organelle Vol+Aux gesture for
+// reaching the OS patch menu, since we don't have access to Move's Back
+// button (shadow_ui intercepts it before our handler).
+const AUX_HOLD_MS = 500;
+let auxPressTime = 0;
+let auxLongFired = false;
+
 // Accumulated 0-1023 value per physical knob (1-indexed; we use 1..4).
 // Move's knobs send relative deltas (1-63=CW, 64-127=CCW), not absolute,
 // so we have to integrate. 0-1023 matches Organelle's native [r knobN] range.
@@ -275,6 +283,17 @@ function tick() {
         if (needsBrowserRedraw) drawBrowser();
         return;
     }
+    // Aux long-press: fire exit on threshold crossing while still held,
+    // so the user gets a confirmation as soon as they cross the timer
+    // instead of having to release first.
+    if (auxPressTime && !auxLongFired) {
+        if (Date.now() - auxPressTime >= AUX_HOLD_MS) {
+            auxLongFired = true;
+            host_module_set_param('aux', '0');   // synthesise release first
+            exitToBrowser();
+            return;
+        }
+    }
     // Running state.
     const json = host_module_get_param('screen_ops');
     if (json && json.length > 2) {  // ignore empty "[]"
@@ -300,13 +319,27 @@ function onMidiMessageInternal(data) {
     // shouldFilterMessage() drops these, so handle BEFORE the filter.
     if ((hi === 0x90 || hi === 0x80) && d1 >= 0 && d1 <= 7) {
         const on = hi === 0x90 && d2 > 0;
-        // Knob 7 touch (note 6) = Organelle Aux button → [r aux] in the
-        // patch. Patches like CZZ-Multi rely on this to navigate their
-        // own knob/menu pages.
-        if (d1 === 6) { host_module_set_param('aux', on ? '1' : '0'); return; }
-        // Knob 8 touch (note 7) = foot switch → [r fs].
-        if (d1 === 7) { host_module_set_param('fs',  on ? '1' : '0'); return; }
-        return;  // other knob touches ignored
+        // Knob 7 touch = Aux. Short press → [r aux] in the patch
+        // (page nav, latch toggles, etc.). Long press (>500ms) → exit
+        // to the patch list, since Back is taken by Schwung.
+        if (d1 === 6) {
+            if (on) {
+                auxPressTime = Date.now();
+                auxLongFired = false;
+                host_module_set_param('aux', '1');
+            } else {
+                host_module_set_param('aux', '0');
+                if (!auxLongFired && state === 'running') {
+                    const held = Date.now() - auxPressTime;
+                    if (held >= AUX_HOLD_MS) exitToBrowser();
+                }
+                auxPressTime = 0;
+            }
+            return;
+        }
+        // Knob 8 touch = foot switch → [r fs].
+        if (d1 === 7) { host_module_set_param('fs', on ? '1' : '0'); return; }
+        return;
     }
 
     // Drop noise + capacitive touches we don't care about.
