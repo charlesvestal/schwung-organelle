@@ -77,6 +77,13 @@ Instance* current_instance_from_libpd() {
 
 void on_pd_message(const char* recv, const char* sel, int argc, t_atom* argv) {
     Instance* inst = current_instance_from_libpd();
+    if (g_host && g_host->log) {
+        char line[128];
+        std::snprintf(line, sizeof(line),
+            "[organelle/msg] recv=%s sel=%s argc=%d inst=%p",
+            recv ? recv : "(null)", sel ? sel : "(null)", argc, (void*)inst);
+        g_host->log(line);
+    }
     if (!inst || !recv || !sel) return;
     if (std::strcmp(recv, "oled") == 0) {
         organelle::handle_oled_message(sel, argc, argv, inst->screen_ring);
@@ -144,7 +151,9 @@ void on_pd_print(const char* s) {
     }
 }
 
-void install_hooks_once() {
+// libpd hooks are PER-INSTANCE after libpd_init. Set them AFTER each
+// libpd_new_instance + libpd_set_instance, not once globally.
+void install_instance_hooks() {
     libpd_set_printhook(on_pd_print);
     libpd_set_messagehook(on_pd_message);
     libpd_set_noteonhook(on_pd_noteon);
@@ -159,8 +168,10 @@ void* create_instance(const char* /*module_dir*/, const char* /*json_defaults*/)
     {
         std::lock_guard<std::mutex> lk(g_libpd_global_mtx);
         if (!g_libpd_inited) {
+            // Set the print hook BEFORE libpd_init so we capture global init
+            // prints (sys_printhook routes them while s_initialized is false).
+            libpd_set_printhook(on_pd_print);
             libpd_init();
-            install_hooks_once();
             g_libpd_inited = true;
         }
     }
@@ -173,6 +184,9 @@ void* create_instance(const char* /*module_dir*/, const char* /*json_defaults*/)
         std::lock_guard<std::mutex> lk(g_inst_map_mtx);
         g_inst_map[inst->pd] = inst;
     }
+
+    // Hooks are PER-INSTANCE after libpd_init — install on this instance now.
+    install_instance_hooks();
 
     libpd_init_audio(2, 2, MOVE_SAMPLE_RATE);
 
@@ -358,7 +372,17 @@ int get_param(void* p, const char* key, char* buf, int buf_len) {
     if (!inst || !key || !buf || buf_len <= 0) return 0;
 
     if (std::strcmp(key, "screen_ops") == 0) {
-        return inst->screen_ring.drain_json(buf, buf_len);
+        const int n = inst->screen_ring.drain_json(buf, buf_len);
+        if (n > 2 && g_host && g_host->log) {
+            char head[160];
+            const int copy = n < 140 ? n : 140;
+            std::memcpy(head, buf, copy);
+            head[copy] = 0;
+            char line[256];
+            std::snprintf(line, sizeof(line), "[organelle/screen] drained %d bytes: %s", n, head);
+            g_host->log(line);
+        }
+        return n;
     }
     if (std::strcmp(key, "chain_params") == 0) {
         static const char* params_json =
