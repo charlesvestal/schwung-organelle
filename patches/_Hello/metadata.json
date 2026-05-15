@@ -1,6 +1,0 @@
-{
-    "name": "Hello",
-    "author": "schwung-organelle",
-    "description": "Verifies screen, MIDI, and audio. Shows 'Hello', plays sine on note input.",
-    "knob_labels": []
-}

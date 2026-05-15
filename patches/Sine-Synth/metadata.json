@@ -1,6 +1,0 @@
-{
-    "name": "Sine Synth",
-    "author": "schwung-organelle",
-    "description": "Monophonic sine with volume + detune knobs.",
-    "knob_labels": ["Volume", "Detune", "", ""]
-}
