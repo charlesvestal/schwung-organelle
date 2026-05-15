@@ -80,6 +80,20 @@ void on_pd_message(const char* recv, const char* sel, int argc, t_atom* argv) {
     if (!inst || !recv || !sel) return;
     if (std::strcmp(recv, "oled") == 0) {
         organelle::handle_oled_message(sel, argc, argv, inst->screen_ring);
+        return;
+    }
+    if (std::strncmp(recv, "screenLine", 10) == 0) {
+        const int n = recv[10] - '0';
+        if (n < 1 || n > 5) return;
+        // Patches send "3: Tone 42" as "3:" selector + ["Tone", 42] args.
+        // Reconstruct as selector + space-joined args.
+        t_atom combined[16];
+        int    nc = 0;
+        SETSYMBOL(&combined[nc++], gensym(sel));
+        for (int i = 0; i < argc && nc < 16; ++i) {
+            combined[nc++] = argv[i];
+        }
+        organelle::handle_screen_line(n, nc, combined, inst->screen_ring);
     }
 }
 
