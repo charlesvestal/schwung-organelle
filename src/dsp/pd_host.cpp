@@ -412,7 +412,14 @@ void set_param(void* p, const char* key, const char* val) {
     if (std::strcmp(key, "knob3") == 0) { publish_knob(3, fv); return; }
     if (std::strcmp(key, "knob4") == 0) { publish_knob(4, fv); return; }
     if (std::strcmp(key, "volume") == 0)        { send_float("volume", fv / 127.0f); return; }
-    if (std::strcmp(key, "aux") == 0)           { send_float("auxKey", fv != 0.0f ? 1.0f : 0.0f); return; }
+    if (std::strcmp(key, "aux") == 0) {
+        // Organelle's mother.pd publishes the Aux button to [r aux] (0/1)
+        // and also exposes [r auxKey] for legacy patches. Send both.
+        const float v = fv != 0.0f ? 1.0f : 0.0f;
+        send_float("aux", v);
+        send_float("auxKey", v);
+        return;
+    }
     if (std::strcmp(key, "fs") == 0)            { send_float("fs",     fv != 0.0f ? 1.0f : 0.0f); return; }
     if (std::strcmp(key, "encoderInput") == 0)  { send_float("encoderInput", fv); return; }
     if (std::strcmp(key, "encoderButton") == 0) { send_float("encoderButton", fv != 0.0f ? 1.0f : 0.0f); return; }
