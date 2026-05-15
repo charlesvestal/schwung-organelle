@@ -1,9 +1,10 @@
-// Organelle 5x8 "small" font, ported verbatim from Organelle_OS/fonts.h
-// (BSD-3-Clause, Critter & Guitari). One char = 5 bytes, each byte is a
-// column with LSB = top pixel. Char codes 32..127.
+// Organelle 5x8 "small" font, ported verbatim from Organelle_OS/fonts.h.
+// One char = 5 bytes, each byte is a column with LSB = top pixel. Char
+// codes 32..127. Matches OledScreen::put_char_small / println_8 exactly.
 //
-// Matches OledScreen::put_char_small / println_8 layout exactly: glyph is
-// 5 px wide, 8 px tall; println inserts a 1-px gap between glyphs.
+// Copyright (c) Critter & Guitari. Distributed under the BSD 3-Clause
+// License (see LICENSE in this module). Source:
+//   https://github.com/critterandguitari/Organelle_OS  (fonts.h)
 
 const FONT_SMALL = new Uint8Array([
     0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x4F,0x00,0x00, 0x00,0x07,0x00,0x07,0x00,
