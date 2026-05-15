@@ -91,6 +91,13 @@ int ScreenOpRing::drain_json(char* out, int cap) {
             case OP_FLIP:
                 n = std::snprintf(entry, sizeof(entry), "{\"op\":\"flip\"}");
                 break;
+            case OP_SET_LINE: {
+                char esc[OP_TEXT_MAX * 2 + 1];
+                json_escape(op.text, esc, sizeof(esc));
+                n = std::snprintf(entry, sizeof(entry),
+                    "{\"op\":\"set_line\",\"n\":%d,\"text\":\"%s\"}", op.a, esc);
+                break;
+            }
             default:
                 n = 0;
         }
@@ -178,6 +185,27 @@ void handle_oled_message(const char* selector, int argc, t_atom* argv, ScreenOpR
         ring.push(op);
     }
     // Unknown selectors are silently ignored.
+}
+
+void handle_screen_line(int line_num, int argc, t_atom* argv, ScreenOpRing& ring) {
+    if (line_num < 1 || line_num > 5) return;
+    ScreenOp op{};
+    op.kind = OP_SET_LINE;
+    op.a = static_cast<int16_t>(line_num);
+    int o = 0;
+    for (int i = 0; i < argc && o < OP_TEXT_MAX - 2; ++i) {
+        if (i > 0 && o < OP_TEXT_MAX - 2) op.text[o++] = ' ';
+        if (libpd_is_symbol(argv + i)) {
+            const char* s = libpd_get_symbol(argv + i);
+            while (s && *s && o < OP_TEXT_MAX - 1) op.text[o++] = *s++;
+        } else if (libpd_is_float(argv + i)) {
+            char tmp[16];
+            int tn = std::snprintf(tmp, sizeof(tmp), "%g", libpd_get_float(argv + i));
+            for (int k = 0; k < tn && o < OP_TEXT_MAX - 1; ++k) op.text[o++] = tmp[k];
+        }
+    }
+    op.text[o] = 0;
+    ring.push(op);
 }
 
 } // namespace organelle

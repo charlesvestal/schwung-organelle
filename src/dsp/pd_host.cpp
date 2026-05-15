@@ -83,6 +83,32 @@ void on_pd_message(const char* recv, const char* sel, int argc, t_atom* argv) {
     }
 }
 
+// [s screenLineN] receivers fire the LIST hook (or symbol hook for single
+// symbol text). Route both into OP_SET_LINE via the screen ring.
+void on_pd_list(const char* recv, int argc, t_atom* argv) {
+    Instance* inst = current_instance_from_libpd();
+    if (!inst || !recv) return;
+    if (std::strncmp(recv, "screenLine", 10) == 0) {
+        int n = recv[10] - '0';
+        if (n >= 1 && n <= 5) {
+            organelle::handle_screen_line(n, argc, argv, inst->screen_ring);
+        }
+    }
+}
+
+void on_pd_symbol(const char* recv, const char* sym) {
+    Instance* inst = current_instance_from_libpd();
+    if (!inst || !recv || !sym) return;
+    if (std::strncmp(recv, "screenLine", 10) == 0) {
+        int n = recv[10] - '0';
+        if (n >= 1 && n <= 5) {
+            t_atom a;
+            SETSYMBOL(&a, gensym(sym));
+            organelle::handle_screen_line(n, 1, &a, inst->screen_ring);
+        }
+    }
+}
+
 void on_pd_noteon(int ch, int pitch, int vel) {
     Instance* inst = current_instance_from_libpd();
     if (!inst) return;
@@ -141,6 +167,8 @@ void on_pd_pitchbend(int ch, int val) {
 // libpd_new_instance + libpd_set_instance, not once globally.
 void install_instance_hooks() {
     libpd_set_messagehook(on_pd_message);
+    libpd_set_listhook(on_pd_list);
+    libpd_set_symbolhook(on_pd_symbol);
     libpd_set_noteonhook(on_pd_noteon);
     libpd_set_controlchangehook(on_pd_controlchange);
     libpd_set_programchangehook(on_pd_programchange);
@@ -168,8 +196,13 @@ void* create_instance(const char* module_dir, const char* /*json_defaults*/) {
 
     libpd_init_audio(2, 2, MOVE_SAMPLE_RATE);
 
-    // Subscribe to [s oled] in this instance.
+    // Subscribe to [s oled] and the 5 screenLineN receivers in this instance.
     libpd_bind("oled");
+    libpd_bind("screenLine1");
+    libpd_bind("screenLine2");
+    libpd_bind("screenLine3");
+    libpd_bind("screenLine4");
+    libpd_bind("screenLine5");
 
     // Pd needs an explicit "start audio" message.
     libpd_start_message(1);

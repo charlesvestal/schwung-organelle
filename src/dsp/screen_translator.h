@@ -23,6 +23,7 @@ enum ScreenOpKind : uint8_t {
     OP_PIXEL,
     OP_PRINT,
     OP_FLIP,
+    OP_SET_LINE,    // a = line number (1-5), text = line content
 };
 
 struct ScreenOp {
@@ -51,5 +52,9 @@ private:
 // Parse a [s oled <selector> <args...>] message into a ScreenOp and push to ring.
 // Called from libpd message hook on the realtime thread.
 void handle_oled_message(const char* selector, int argc, t_atom* argv, ScreenOpRing& ring);
+
+// Push a [s screenLineN <text>] message as an OP_SET_LINE op.
+// line_num is 1..5; text is whatever the patch sent (may be a list).
+void handle_screen_line(int line_num, int argc, t_atom* argv, ScreenOpRing& ring);
 
 } // namespace organelle

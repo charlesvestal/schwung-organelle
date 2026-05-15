@@ -27,12 +27,16 @@ let midiOutDrainCounter = 0;
 const knobValues = [0, 512, 512, 512, 512];   // indexes 1..4 used; 0 unused
 const KNOB_STEP = 8;                          // 128 ticks → full range
 
-// Default screen state — drawn for patches that don't emit [s oled]
-// themselves (most C&G stock patches relied on the Organelle OS for this).
+// Default screen state — Organelle OS-style. Top 8px info bar shows the
+// patch name; below that, five 11px-tall text rows mirror what the
+// patch publishes via [s screenLine1..5].
+//
+// Pixel layout matches OledScreen::calcxpos(n) = (n-1)*11 + 9 from
+// Organelle_OS/OledScreen.cpp — line N starts at y = 9 + (n-1)*11.
 let currentPatchName = '';
-let knobLabels = ['', '', '', ''];
-let patchHasDrawn = false;
-let lastDrawnKnobs = [-1, -1, -1, -1];
+let screenLines = ['', '', '', '', ''];
+let patchHasDrawn = false;          // set true on first [s oled ...] op
+let defaultDirty = true;
 
 /* ----- helpers ----- */
 
@@ -91,19 +95,6 @@ function patchNameFromPath(p) {
     return i >= 0 ? p.substring(i + 1) : (p || '');
 }
 
-function loadKnobLabels(patchPath) {
-    knobLabels = ['', '', '', ''];
-    if (!patchPath) return;
-    const meta = host_read_file(`${patchPath}/metadata.json`);
-    if (!meta) return;
-    try {
-        const json = JSON.parse(meta);
-        if (Array.isArray(json.knob_labels)) {
-            for (let i = 0; i < 4; i++) knobLabels[i] = json.knob_labels[i] || '';
-        }
-    } catch (_e) {}
-}
-
 function pushKnobValuesToPatch() {
     for (let i = 1; i <= 4; i++) {
         host_module_set_param(`knob${i}`, String(knobValues[i]));
@@ -115,9 +106,9 @@ function enterRunning(patch) {
     pushKnobValuesToPatch();        // patches read r knob1..4 on loadbang
     state = 'running';
     currentPatchName = patch.name;
-    loadKnobLabels(patch.path);
+    screenLines = ['', '', '', '', ''];
     patchHasDrawn = false;
-    lastDrawnKnobs = [-1, -1, -1, -1];
+    defaultDirty = true;
     clear_screen();
     host_flush_display();
 }
@@ -126,6 +117,7 @@ function exitToBrowser() {
     host_module_set_param('patch_path', '');
     state = 'browser';
     currentPatchName = '';
+    screenLines = ['', '', '', '', ''];
     patchHasDrawn = false;
     patches = fetchPatchList();
     if (selectedIndex >= patches.length) selectedIndex = Math.max(0, patches.length - 1);
@@ -133,100 +125,94 @@ function exitToBrowser() {
     drawBrowser();
 }
 
-/* ----- default screen (Organelle "Mother" style) ----- */
-// Drawn when state=running AND the patch hasn't emitted any [s oled] yet.
-// Shows patch name + 4 knob value bars, mirroring what the Organelle OS
-// renders by default for patches without custom UI.
+/* ----- default screen (Organelle home-screen port) ----- */
+// Mirrors Organelle_OS/OledScreen.cpp::setLine: a top info bar (y=0-8) with
+// the patch name + 5 text rows below, each at y = 9 + (n-1)*11. Patches
+// set the rows via [s screenLineN <text>].
 
 function drawDefaultScreen() {
     clear_screen();
-    const SCREEN_W = 128;
-    print(2, 0, currentPatchName || 'Patch', 1);
-
-    const startY = 18;
-    const lineH  = 11;
-    const labelW = 50;
-    const valueW = 22;
-    const barX   = labelW + 2;
-    const barW   = SCREEN_W - barX - valueW;
-
-    for (let i = 0; i < 4; i++) {
-        const v = knobValues[i + 1] / 1023;
-        const y = startY + i * lineH;
-        const lab = (knobLabels[i] || `K${i + 1}`).substring(0, 8);
-        print(2, y, `${lab}:`, 1);
-
-        // Bar outline (1px border, 5px tall fill)
-        const bx = barX, by = y, bw = barW, bh = 6;
-        draw_line(bx,        by,        bx + bw - 1, by,        1);
-        draw_line(bx,        by + bh - 1, bx + bw - 1, by + bh - 1, 1);
-        draw_line(bx,        by,        bx,        by + bh - 1, 1);
-        draw_line(bx + bw - 1, by,        bx + bw - 1, by + bh - 1, 1);
-        const fillW = Math.max(0, Math.min(bw - 2, Math.round(v * (bw - 2))));
-        if (fillW > 0) fill_rect(bx + 1, by + 1, fillW, bh - 2, 1);
-
-        // Percent on the right
-        const pct = Math.round(v * 100);
-        print(bx + bw + 2, y, `${pct}`, 1);
+    // Info bar (y=0-8): patch name. Organelle's OS uses println_8 at
+    // (2, 0); Schwung's print() uses the same 8-tall font baseline.
+    if (currentPatchName) print(2, 0, currentPatchName, 1);
+    // 5 text lines starting at y = 9, each 11px tall.
+    for (let n = 1; n <= 5; n++) {
+        const txt = screenLines[n - 1];
+        if (!txt) continue;
+        const y = 9 + (n - 1) * 11 + 1;   // +1 like calcxpos's println_8 offset
+        print(2, y, txt, 1);
     }
     host_flush_display();
+    defaultDirty = false;
 }
 
 function updateDefaultIfNeeded() {
     if (state !== 'running' || patchHasDrawn) return;
-    let changed = lastDrawnKnobs[0] < 0;   // first call after entering running
-    for (let i = 0; i < 4; i++) {
-        if (knobValues[i + 1] !== lastDrawnKnobs[i]) {
-            changed = true;
-            lastDrawnKnobs[i] = knobValues[i + 1];
-        }
-    }
-    if (changed) drawDefaultScreen();
+    if (defaultDirty) drawDefaultScreen();
 }
 
 /* ----- screen op execution (running state) ----- */
 
 function executeScreenOps(ops) {
     let didFlip = false;
+    let drawnFromPatch = false;
     for (const o of ops) {
         switch (o.op) {
+            case 'set_line': {
+                // Default screen text — patch published [s screenLineN text].
+                const n = (o.n | 0);
+                if (n >= 1 && n <= 5) {
+                    screenLines[n - 1] = String(o.text || '');
+                    defaultDirty = true;
+                }
+                break;
+            }
             case 'clear':
                 clear_screen();
+                drawnFromPatch = true;
                 break;
             case 'fill':
                 fill_rect(o.x | 0, o.y | 0, o.w | 0, o.h | 0, o.c ? 1 : 0);
+                drawnFromPatch = true;
                 break;
             case 'line':
                 draw_line(o.x1 | 0, o.y1 | 0, o.x2 | 0, o.y2 | 0, o.c ? 1 : 0);
+                drawnFromPatch = true;
                 break;
             case 'box': {
-                // Outlined rect: 4 single-pixel lines.
                 const x = o.x | 0, y = o.y | 0, w = o.w | 0, h = o.h | 0, c = o.c ? 1 : 0;
                 draw_line(x, y, x + w - 1, y, c);
                 draw_line(x, y + h - 1, x + w - 1, y + h - 1, c);
                 draw_line(x, y, x, y + h - 1, c);
                 draw_line(x + w - 1, y, x + w - 1, y + h - 1, c);
+                drawnFromPatch = true;
                 break;
             }
             case 'invert':
-                // Approximation: fill white. Real XOR invert isn't exposed by
-                // Schwung's display API; most Organelle patches use invert
-                // for selection highlighting, which this still reads correctly
-                // if the patch draws text in color 0 over the highlight.
+                // Approximation: fill white. Schwung's display API exposes no
+                // XOR invert. C&G patches use invert mainly for menu hilight,
+                // which still reads OK if text is drawn in color 0 on top.
                 fill_rect(o.x | 0, o.y | 0, o.w | 0, o.h | 0, 1);
+                drawnFromPatch = true;
                 break;
             case 'pixel':
                 set_pixel(o.x | 0, o.y | 0, o.c ? 1 : 0);
+                drawnFromPatch = true;
                 break;
             case 'print':
                 print(o.x | 0, o.y | 0, String(o.text || ''), o.c ? 1 : 0);
+                drawnFromPatch = true;
                 break;
             case 'flip':
                 didFlip = true;
                 break;
         }
     }
-    if (didFlip) host_flush_display();
+    if (drawnFromPatch) {
+        patchHasDrawn = true;
+        if (didFlip) host_flush_display();
+    }
+    return drawnFromPatch;
 }
 
 /* ----- MIDI-out drain (running state) ----- */
@@ -257,9 +243,9 @@ function init() {
     if (cur) {
         state = 'running';
         currentPatchName = patchNameFromPath(cur);
-        loadKnobLabels(cur);
+        screenLines = ['', '', '', '', ''];
         patchHasDrawn = false;
-        lastDrawnKnobs = [-1, -1, -1, -1];
+        defaultDirty = true;
         clear_screen();
         host_flush_display();
     } else {
@@ -276,17 +262,12 @@ function tick() {
     }
     // Running state.
     const json = host_module_get_param('screen_ops');
-    let drewFromPatch = false;
     if (json && json.length > 2) {  // ignore empty "[]"
         let ops;
         try { ops = JSON.parse(json); } catch (_e) { ops = null; }
-        if (Array.isArray(ops) && ops.length) {
-            executeScreenOps(ops);
-            patchHasDrawn = true;
-            drewFromPatch = true;
-        }
+        if (Array.isArray(ops) && ops.length) executeScreenOps(ops);
     }
-    if (!drewFromPatch) updateDefaultIfNeeded();
+    updateDefaultIfNeeded();
     // Drain MIDI out every 2 ticks (~22 Hz, plenty for note timing).
     if ((++midiOutDrainCounter & 1) === 0) drainMidiOut();
 }
