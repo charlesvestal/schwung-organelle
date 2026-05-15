@@ -424,12 +424,12 @@ void set_param(void* p, const char* key, const char* val) {
     if (std::strcmp(key, "encoderInput") == 0)  {
         // Legacy [r encoderInput] gets the signed delta as-is.
         send_float("encoderInput", fv);
-        // Organelle's mother.pd convention: [s enc] fires once per detent,
-        // value 0 = CCW, 1 = CW. Patches use [sel 0 1] so we must emit
-        // discrete 0/1 ticks, not signed magnitudes.
-        const int n = static_cast<int>(fv < 0 ? -fv : fv);
-        const float dir = fv > 0 ? 1.0f : 0.0f;
-        for (int i = 0; i < n && i < 8; ++i) send_float("enc", dir);
+        // Organelle's mother.pd: [s enc] fires once per detent, value 0=CCW
+        // 1=CW. Patches use [sel 0 1] so we must emit discrete 0/1 ticks.
+        // Coalesce magnitudes >1 into a single tick — firing the chain
+        // multiple times within one Pd message dispatch can outrun the
+        // patchmenu's state machine (its f-stored page value lags).
+        if (fv != 0.0f) send_float("enc", fv > 0 ? 1.0f : 0.0f);
         return;
     }
     if (std::strcmp(key, "encoderButton") == 0) {
