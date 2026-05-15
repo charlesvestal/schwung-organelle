@@ -2,12 +2,12 @@
 #X obj 30 30 notein;
 #X obj 30 60 mtof;
 #X obj 30 90 osc~;
-#X obj 200 30 r knob1;
+#X obj 200 30 r knob1Raw;
 #X obj 200 60 / 1023;
 #X obj 200 90 line~;
 #X obj 30 120 *~;
 #X obj 30 150 dac~;
-#X obj 400 30 r knob2;
+#X obj 400 30 r knob2Raw;
 #X obj 400 60 - 512;
 #X obj 400 90 / 50;
 #X obj 30 200 loadbang;

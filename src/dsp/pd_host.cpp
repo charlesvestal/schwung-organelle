@@ -312,12 +312,22 @@ void set_param(void* p, const char* key, const char* val) {
         return;
     }
 
-    // Knob values arrive already scaled 0-1023 (JS integrates relative deltas).
-    if (std::strcmp(key, "knob1") == 0) { send_float("knob1", fv); return; }
-    if (std::strcmp(key, "knob2") == 0) { send_float("knob2", fv); return; }
-    if (std::strcmp(key, "knob3") == 0) { send_float("knob3", fv); return; }
-    if (std::strcmp(key, "knob4") == 0) { send_float("knob4", fv); return; }
-    if (std::strcmp(key, "volume") == 0)        { send_float("volume", fv * 1023.0f / 127.0f); return; }
+    // Knob values arrive 0-1023 (JS integrates deltas). Follow Organelle's
+    // mother.pd convention: publish normalised (0-1) to [r knobN] and raw
+    // (0-1023) to [r knobNRaw]. Many C&G patches read normalised; our
+    // hand-written patches and some others use raw.
+    auto publish_knob = [&](int n, float raw){
+        char base[8], raw_recv[16];
+        std::snprintf(base, sizeof(base), "knob%d", n);
+        std::snprintf(raw_recv, sizeof(raw_recv), "knob%dRaw", n);
+        send_float(base, raw / 1023.0f);
+        send_float(raw_recv, raw);
+    };
+    if (std::strcmp(key, "knob1") == 0) { publish_knob(1, fv); return; }
+    if (std::strcmp(key, "knob2") == 0) { publish_knob(2, fv); return; }
+    if (std::strcmp(key, "knob3") == 0) { publish_knob(3, fv); return; }
+    if (std::strcmp(key, "knob4") == 0) { publish_knob(4, fv); return; }
+    if (std::strcmp(key, "volume") == 0)        { send_float("volume", fv / 127.0f); return; }
     if (std::strcmp(key, "aux") == 0)           { send_float("auxKey", fv != 0.0f ? 1.0f : 0.0f); return; }
     if (std::strcmp(key, "fs") == 0)            { send_float("fs",     fv != 0.0f ? 1.0f : 0.0f); return; }
     if (std::strcmp(key, "encoderInput") == 0)  { send_float("encoderInput", fv); return; }
