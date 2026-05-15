@@ -77,13 +77,6 @@ Instance* current_instance_from_libpd() {
 
 void on_pd_message(const char* recv, const char* sel, int argc, t_atom* argv) {
     Instance* inst = current_instance_from_libpd();
-    if (g_host && g_host->log) {
-        char line[128];
-        std::snprintf(line, sizeof(line),
-            "[organelle/msg] recv=%s sel=%s argc=%d inst=%p",
-            recv ? recv : "(null)", sel ? sel : "(null)", argc, (void*)inst);
-        g_host->log(line);
-    }
     if (!inst || !recv || !sel) return;
     if (std::strcmp(recv, "oled") == 0) {
         organelle::handle_oled_message(sel, argc, argv, inst->screen_ring);
@@ -372,17 +365,7 @@ int get_param(void* p, const char* key, char* buf, int buf_len) {
     if (!inst || !key || !buf || buf_len <= 0) return 0;
 
     if (std::strcmp(key, "screen_ops") == 0) {
-        const int n = inst->screen_ring.drain_json(buf, buf_len);
-        if (n > 2 && g_host && g_host->log) {
-            char head[160];
-            const int copy = n < 140 ? n : 140;
-            std::memcpy(head, buf, copy);
-            head[copy] = 0;
-            char line[256];
-            std::snprintf(line, sizeof(line), "[organelle/screen] drained %d bytes: %s", n, head);
-            g_host->log(line);
-        }
-        return n;
+        return inst->screen_ring.drain_json(buf, buf_len);
     }
     if (std::strcmp(key, "chain_params") == 0) {
         static const char* params_json =
