@@ -187,23 +187,46 @@ void handle_oled_message(const char* selector, int argc, t_atom* argv, ScreenOpR
     // Unknown selectors are silently ignored.
 }
 
+static void append_atoms_as_text(int argc, t_atom* argv, char* dst, int dst_cap, int& o) {
+    for (int i = 0; i < argc && o < dst_cap - 2; ++i) {
+        if (o > 0 && o < dst_cap - 2) dst[o++] = ' ';
+        if (libpd_is_symbol(argv + i)) {
+            const char* s = libpd_get_symbol(argv + i);
+            while (s && *s && o < dst_cap - 1) dst[o++] = *s++;
+        } else if (libpd_is_float(argv + i)) {
+            char tmp[16];
+            int tn = std::snprintf(tmp, sizeof(tmp), "%g", libpd_get_float(argv + i));
+            for (int k = 0; k < tn && o < dst_cap - 1; ++k) dst[o++] = tmp[k];
+        }
+    }
+}
+
 void handle_screen_line(int line_num, int argc, t_atom* argv, ScreenOpRing& ring) {
     if (line_num < 1 || line_num > 5) return;
     ScreenOp op{};
     op.kind = OP_SET_LINE;
     op.a = static_cast<int16_t>(line_num);
     int o = 0;
-    for (int i = 0; i < argc && o < OP_TEXT_MAX - 2; ++i) {
-        if (i > 0 && o < OP_TEXT_MAX - 2) op.text[o++] = ' ';
-        if (libpd_is_symbol(argv + i)) {
-            const char* s = libpd_get_symbol(argv + i);
-            while (s && *s && o < OP_TEXT_MAX - 1) op.text[o++] = *s++;
-        } else if (libpd_is_float(argv + i)) {
-            char tmp[16];
-            int tn = std::snprintf(tmp, sizeof(tmp), "%g", libpd_get_float(argv + i));
-            for (int k = 0; k < tn && o < OP_TEXT_MAX - 1; ++k) op.text[o++] = tmp[k];
+    append_atoms_as_text(argc, argv, op.text, OP_TEXT_MAX, o);
+    op.text[o] = 0;
+    ring.push(op);
+}
+
+void handle_screen_line_with_selector(int line_num,
+                                      const char* selector,
+                                      int argc, t_atom* argv,
+                                      ScreenOpRing& ring) {
+    if (line_num < 1 || line_num > 5) return;
+    ScreenOp op{};
+    op.kind = OP_SET_LINE;
+    op.a = static_cast<int16_t>(line_num);
+    int o = 0;
+    if (selector) {
+        for (const char* s = selector; *s && o < OP_TEXT_MAX - 1; ++s) {
+            op.text[o++] = *s;
         }
     }
+    append_atoms_as_text(argc, argv, op.text, OP_TEXT_MAX, o);
     op.text[o] = 0;
     ring.push(op);
 }

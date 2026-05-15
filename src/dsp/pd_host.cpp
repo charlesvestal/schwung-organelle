@@ -85,20 +85,15 @@ void on_pd_message(const char* recv, const char* sel, int argc, t_atom* argv) {
     if (std::strncmp(recv, "screenLine", 10) == 0) {
         const int n = recv[10] - '0';
         if (n < 1 || n > 5) return;
-        // Patches send "3: Tone 42" as "3:" selector + ["Tone", 42] args.
-        // Reconstruct as selector + space-joined args.
-        t_atom combined[16];
-        int    nc = 0;
-        SETSYMBOL(&combined[nc++], gensym(sel));
-        for (int i = 0; i < argc && nc < 16; ++i) {
-            combined[nc++] = argv[i];
-        }
-        organelle::handle_screen_line(n, nc, combined, inst->screen_ring);
+        // Re-prepend the selector as plain text — avoids gensym() on the
+        // audio thread which can allocate and crash.
+        char prefix[64];
+        std::snprintf(prefix, sizeof(prefix), "%s ", sel);
+        organelle::handle_screen_line_with_selector(n, prefix, argc, argv,
+                                                    inst->screen_ring);
     }
 }
 
-// [s screenLineN] receivers fire the LIST hook (or symbol hook for single
-// symbol text). Route both into OP_SET_LINE via the screen ring.
 void on_pd_list(const char* recv, int argc, t_atom* argv) {
     Instance* inst = current_instance_from_libpd();
     if (!inst || !recv) return;
@@ -116,9 +111,9 @@ void on_pd_symbol(const char* recv, const char* sym) {
     if (std::strncmp(recv, "screenLine", 10) == 0) {
         int n = recv[10] - '0';
         if (n >= 1 && n <= 5) {
-            t_atom a;
-            SETSYMBOL(&a, gensym(sym));
-            organelle::handle_screen_line(n, 1, &a, inst->screen_ring);
+            // No gensym; just stuff the symbol text into the op directly.
+            organelle::handle_screen_line_with_selector(n, sym, 0, nullptr,
+                                                        inst->screen_ring);
         }
     }
 }

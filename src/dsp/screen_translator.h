@@ -57,4 +57,12 @@ void handle_oled_message(const char* selector, int argc, t_atom* argv, ScreenOpR
 // line_num is 1..5; text is whatever the patch sent (may be a list).
 void handle_screen_line(int line_num, int argc, t_atom* argv, ScreenOpRing& ring);
 
+// Realtime-safe variant: pre-pend a literal selector string to the rendered
+// text without calling gensym (which can allocate). For typed messages
+// arriving on the messagehook where argv is just the trailing args.
+void handle_screen_line_with_selector(int line_num,
+                                      const char* selector,
+                                      int argc, t_atom* argv,
+                                      ScreenOpRing& ring);
+
 } // namespace organelle
